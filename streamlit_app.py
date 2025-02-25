@@ -1,13 +1,15 @@
 import streamlit as st
 from openai import OpenAI
+import requests
 import os
-import gdown
-from markitdown import MarkItDown
-
 url = os.getenv('SYSTEM_PROMPT_URL')
-docx = 'SYSTEM_PROMPT.DOCX'
-if not os.path.exists(docx):
-    gdown.download(url, output=docx, fuzzy=True)
+md = 'SYSTEM_PROMPT.md'
+if not os.path.exists(md):
+    with open(md, 'wb') as f:
+        f.write(requests.get(url).content)
+else:
+    with open(md) as f:
+        lines = f.read().split('\n')
 
 # Create a session state variable to store the chat messages. This ensures that the
 # messages persist across reruns.
@@ -15,7 +17,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
     st.session_state.client = client = OpenAI()
     st.session_state.prompt = prompt = dict()
-    for line in MarkItDown().convert(docx).text_content.split('\n'):
+    for line in lines:
         if '更新日期'  in line:
             prompt[line] = ''
         else:
