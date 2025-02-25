@@ -7,9 +7,8 @@ md = 'SYSTEM_PROMPT.md'
 if not os.path.exists(md):
     with open(md, 'wb') as f:
         f.write(requests.get(url).content)
-else:
-    with open(md) as f:
-        lines = f.read().split('\n')
+with open(md) as f:
+    lines = f.read().split('\n')
 
 # Create a session state variable to store the chat messages. This ensures that the
 # messages persist across reruns.
