@@ -31,7 +31,7 @@ col1, col2 = st.columns(2)
 with col1:
     version = st.selectbox("系統提示選單", list(prompt.keys()))
 with col2:
-    model = st.selectbox("模型選單", ['gpt-4o', 'o3-mini'])
+    model = st.selectbox("模型選單", ['gpt-4o-mini', 'gpt-4o', 'o3-mini'])
 
 system_prompt = prompt[version]
 print(system_prompt)
