@@ -1,6 +1,10 @@
 import streamlit as st
 from openai import OpenAI
 import requests
+
+from datetime import datetime, timezone, timedelta
+tz = timezone(timedelta(hours=+8))
+
 import os
 url = os.getenv('SYSTEM_PROMPT_URL')
 md = 'SYSTEM_PROMPT.md'
@@ -10,35 +14,35 @@ if not os.path.exists(md):
 with open(md) as f:
     lines = f.read().split('\n')
 
-# Create a session state variable to store the chat messages. This ensures that the
-# messages persist across reruns.
-if "messages" not in st.session_state:
+# Create session state variables
+if 'client' not in st.session_state:
+    st.session_state.client = OpenAI()
+    st.session_state.system = {}
     st.session_state.messages = []
-    st.session_state.client = client = OpenAI()
-    st.session_state.prompt = prompt = dict()
     for line in lines:
         if '更新日期'  in line:
-            prompt[line] = ''
+            st.session_state.system[line] = ''
         else:
-            prompt[list(prompt.keys())[-1]] += line + '\n'
-else:
-    client = st.session_state.client
-    prompt = st.session_state.prompt
+            st.session_state.system[list(st.session_state.system.keys())[-1]] += line + '\n'
 
 st.title('🧚‍♀️ Lilien')
 
 col1, col2 = st.columns(2)
 with col1:
-    version = st.selectbox("系統提示選單", list(prompt.keys()))
+    version = st.selectbox("系統提示選單", list(st.session_state.system.keys()))
 with col2:
     model = st.selectbox("模型選單", ['gpt-4o-mini', 'gpt-4o', 'o3-mini'])
 
-system_prompt = prompt[version]
+system_prompt = st.session_state.system[version]
 print(system_prompt)
 print(model)
 
 # Display the existing chat messages via `st.chat_message`.
 for message in st.session_state.messages:
+    if message["role"] == "system":
+        current_time = message["content"]
+        st.html(f'<p align="right">{current_time[11:-6]}</p>')
+        continue
     with st.chat_message(message["role"], avatar=None if message["role"] == "user" else '🧚‍♀️'):
         st.markdown(message["content"])
 
@@ -46,18 +50,21 @@ for message in st.session_state.messages:
 # automatically at the bottom of the page.
 if user_prompt := st.chat_input("你說 我聽"):
 
+    # Store and display the current_time
+    current_time = datetime.now(tz).replace(microsecond=0).isoformat()
+    st.session_state.messages.append({"role": "system", "content": current_time})
+    st.html(f'<p align="right">{current_time[11:-6]}</p>')
     # Store and display the current user_prompt.
     st.session_state.messages.append({"role": "user", "content": user_prompt})
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
+    # Last 10 rounds of conversation queued before the current_time/user_prompt.
+    st.session_state.messages = st.session_state.messages[-32:]
     # Generate a response using the OpenAI API.
-    stream = client.chat.completions.create(
+    stream = st.session_state.client.chat.completions.create(
         model=model,
-        messages=[{'role': 'system', 'content': system_prompt}] + [
-            {"role": m["role"], "content": m["content"]}
-            for m in st.session_state.messages[-20:]
-        ],
+        messages=[{'role': 'system', 'content': system_prompt}] + st.session_state.messages,
         stream=True,
     )
 
