@@ -2,28 +2,35 @@ import streamlit as st
 from openai import OpenAI
 import requests
 
+import os
 from datetime import datetime, timezone, timedelta
 tz = timezone(timedelta(hours=+8))
 
-import os
-url = os.getenv('SYSTEM_PROMPT_URL')
-md = 'SYSTEM_PROMPT.md'
-if not os.path.exists(md):
-    with open(md, 'wb') as f:
-        f.write(requests.get(url).content)
-with open(md) as f:
-    lines = f.read().split('\n')
+tools = [
+    {
+        'type': 'function',
+        'function': {
+            'name': 'keep_notes',
+            'description': "Call this function when user's message concerning:\n{}".format(requests.get(os.getenv('KEEP_NOTES_URL')).text),
+            'parameters': {}
+        }
+    },
+]
+def keep_notes(note):
+    requests.post(os.getenv('USER_NOTES_URL'), note)
+    st.session_state.notes += '\n' + note
 
 # Create session state variables
 if 'client' not in st.session_state:
     st.session_state.client = OpenAI()
-    st.session_state.system = {}
     st.session_state.messages = []
-    for line in lines:
+    st.session_state.system = {}
+    for line in requests.get(os.getenv('SYSTEM_PROMPT_URL')).text.split('\n'):
         if '更新日期'  in line:
             st.session_state.system[line] = ''
         else:
             st.session_state.system[list(st.session_state.system.keys())[-1]] += line + '\n'
+    st.session_state.notes = requests.get(os.getenv('USER_NOTES_URL')).text
 
 st.title('🧚‍♀️ Lilien')
 
@@ -34,8 +41,10 @@ with col2:
     model = st.selectbox("模型選單", ['gpt-4o-mini', 'gpt-4o', 'o3-mini'])
 
 system_prompt = st.session_state.system[version]
+notes = 'Notes from the user:\n' + st.session_state.notes
 print(system_prompt)
-print(model)
+print(tools[0]['function']['description'])
+print(notes)
 
 # Display the existing chat messages via `st.chat_message`.
 for message in st.session_state.messages:
@@ -59,12 +68,22 @@ if user_prompt := st.chat_input("你說 我聽"):
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
+    tool_calls = st.session_state.client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": user_prompt}],
+        tools=tools,
+    ).choices[0].message.tool_calls
+    if tool_calls:
+        keep_notes(user_prompt)
     # Last 10 rounds of conversation queued before the current_time/user_prompt.
     st.session_state.messages = st.session_state.messages[-32:]
     # Generate a response using the OpenAI API.
     stream = st.session_state.client.chat.completions.create(
         model=model,
-        messages=[{'role': 'system', 'content': system_prompt}] + st.session_state.messages,
+        messages=[
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'system', 'content': notes}
+            ] + st.session_state.messages,
         stream=True,
     )
 
