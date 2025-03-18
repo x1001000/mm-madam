@@ -4,25 +4,41 @@ from openai import OpenAI
 import glob
 csvs = glob.glob('*.csv')
 
-# Create session state variables
-if 'client' not in st.session_state:
-    st.session_state.client = OpenAI()
-    st.session_state.messages = []
-    st.session_state.database = {}
-    for csv in csvs:
-        with open(csv) as f:
-            st.session_state.database[csv] = ''.join(f.readlines())
+import os
+models = {
+    'gemini-2.0-flash': {
+        'api_key': os.environ.get('GEMINI_API_KEY'),
+        'base_url': "https://generativelanguage.googleapis.com/v1beta/openai/"
+        },
+    'gemini-2.0-flash-lite': {
+        'api_key': os.environ.get('GEMINI_API_KEY'),
+        'base_url': "https://generativelanguage.googleapis.com/v1beta/openai/"
+        },
+    # 'grok-2': {
+    #     'api_key': os.environ.get('XAI_API_KEY'),
+    #     'base_url': "https://api.x.ai/v1"
+    #     },
+    }
 
 st.title('👩🏻‍💼 MM Madame')
 
 col1, col2 = st.columns(2)
 with col1:
-    version = st.selectbox("知識庫選單", csvs)
+    csv = st.selectbox("知識庫", csvs)
 with col2:
-    model = st.selectbox("模型選單", ['gpt-4o-mini', 'gemini-2.0-flash-lite', 'grok-2'])
+    model = st.selectbox("語言模型", models.keys())
 
-system_prompt = '妳是最專業的總經投資平台「財經M平方（MacroMicro）」的AI研究員：Madame。妳會依據下列csv的知識庫回答問題，並且標註出處id。若非總經相關問題，妳會告知不便回答。\n\n' + st.session_state.database[version]
-print(system_prompt)
+# Create session state variables
+if 'client' not in st.session_state:
+    st.session_state.client = OpenAI(**models[model])
+    st.session_state.messages = []
+    st.session_state.knowledge = {}
+    for csv in csvs:
+        with open(csv) as f:
+            st.session_state.knowledge[csv] = ''.join(f.readlines())
+
+system_prompt = '妳是總經投資平台「財經M平方（MacroMicro）」的AI研究員：Madame。妳會依據平台知識庫回答問題，並且標註出處id。若非總經相關問題，妳會告知不便回答。\n\n' + st.session_state.knowledge[csv]
+# print(system_prompt)
 
 # Display the existing chat messages via `st.chat_message`.
 for message in st.session_state.messages:
@@ -38,12 +54,7 @@ if user_prompt := st.chat_input("問我總經相關的問題吧"):
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    tool_calls = st.session_state.client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": user_prompt}],
-    ).choices[0].message.tool_calls
-
-    # Last 10 rounds of conversation queued before the current_time/user_prompt.
+    # Last 5 rounds of conversation queued before the current_time/user_prompt.
     st.session_state.messages = st.session_state.messages[-10:]
     # Generate a response using the OpenAI API.
     stream = st.session_state.client.chat.completions.create(
