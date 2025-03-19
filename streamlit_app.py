@@ -54,8 +54,8 @@ if user_prompt := st.chat_input("問我總經相關的問題吧"):
     with st.chat_message("user"):
         st.markdown(user_prompt)
 
-    # Last 5 rounds of conversation queued before the current_time/user_prompt.
-    st.session_state.messages = st.session_state.messages[-10:]
+    # Last 5 rounds of conversation queued
+    st.session_state.messages = st.session_state.messages[-11:]
     # Generate a response using the OpenAI API.
     stream = st.session_state.client.chat.completions.create(
         model=model,
