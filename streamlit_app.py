@@ -20,7 +20,7 @@ models = {
     #     },
     }
 
-st.title('👩🏻‍💼 MM Madame')
+st.title('👩🏻‍💼 MM Madam')
 
 col1, col2 = st.columns(2)
 with col1:

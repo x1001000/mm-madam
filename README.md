@@ -1,4 +1,4 @@
-# 👩🏻‍💼 MM Madame
+# 👩🏻‍💼 MM Madam
 
 A simple Streamlit app chatbot
 
