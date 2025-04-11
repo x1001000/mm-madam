@@ -104,6 +104,9 @@ with col1:
 with col2:
     model = st.selectbox("Gemini 語言模型", models)
 
+# Add search toggle
+enable_search = st.toggle("啟用網路搜尋", value=True, help="開啟後，MM Madam 將使用 Google 搜尋來輔助回答")
+
 # Create session state variables
 if 'client' not in st.session_state:
     st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
@@ -145,7 +148,7 @@ if user_prompt := st.chat_input("您好！我是MM Madam，歡迎問我財經時
         contents=st.session_state.contents,
         config=GenerateContentConfig(
             system_instruction=system_prompt,
-            tools=[Tool(google_search=GoogleSearch())],
+            tools=[Tool(google_search=GoogleSearch())] if enable_search else None,
             response_mime_type="text/plain",
         ),
     )
