@@ -1,81 +1,156 @@
 import streamlit as st
-from openai import OpenAI
-
+from google import genai
+from google.genai.types import Tool, GenerateContentConfig, GoogleSearch, Content, Part
+import pandas as pd
 import glob
 csvs = glob.glob('*.csv')
+models = [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+]
 
-import os
-models = {
-    'gemini-2.0-flash': {
-        'api_key': os.environ.get('GEMINI_API_KEY'),
-        'base_url': "https://generativelanguage.googleapis.com/v1beta/openai/"
-        },
-    'gemini-2.0-flash-lite': {
-        'api_key': os.environ.get('GEMINI_API_KEY'),
-        'base_url': "https://generativelanguage.googleapis.com/v1beta/openai/"
-        },
-    # 'grok-2': {
-    #     'api_key': os.environ.get('XAI_API_KEY'),
-    #     'base_url': "https://api.x.ai/v1"
-    #     },
-    }
+def is_economics_related() -> bool:
+    """
+    Determine if a question is related to economics or finance.
+    
+    Args:
+        client: Gemini API client
+        question: User's question to evaluate
+        model: Gemini model name to use
+        
+    Returns:
+        bool: True if question is economics/finance related, False otherwise
+    """
+    
+    system_prompt = """
+    Determine if the input question is related to:
+    - Economics
+    - Finance
+    - Markets
+    - Trading
+    - Banking
+    - Monetary policy
+    - Fiscal policy
+    - Economic indicators
+    
+    Output only 'true' or 'false'. No other text.
+    """
+    
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=st.session_state.contents[-1:],
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="text/plain",
+            )
+        )
+        
+        # return response.text.strip().lower() == 'true'
+        return 'true' in response.text.strip().lower()
+        
+    except Exception as e:
+        print(f"Error checking question relevance: {e}")
+        return False
+
+def get_relevant_chart_ids() -> list[int]:
+    """
+    Get relevant MacroMicro chart IDs based on user question using Gemini model.
+    
+    Args:
+        client: Gemini API client
+        user_question: User's question about economic/financial topics
+        model: Gemini model name to use
+        
+    Returns:
+        list of relevant chart IDs
+    """
+    
+    system_prompt = """
+    Given a user question, identify relevant MacroMicro chart IDs.
+    Return ONLY a comma-separated list of chart IDs. Do not include any other text.
+    
+    MacroMicro_charts.csv:
+    """ + st.session_state.knowledge[csv]
+    
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=st.session_state.contents[-1:],
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="text/plain",
+            )
+        )
+        
+        # Extract chart IDs from response
+        chart_ids = [
+            int(chart_id.strip())
+            for chart_id in response.text.split(',')
+            if chart_id.strip().isdigit()
+        ]
+        
+        return chart_ids
+        
+    except Exception as e:
+        print(f"Error getting chart IDs: {e}")
+        return []
 
 st.title('👩🏻‍💼 MM Madam')
 
 col1, col2 = st.columns(2)
 with col1:
-    csv = st.selectbox("知識庫", csvs)
+    csv = st.selectbox("MacroMicro 圖表資料", csvs)
 with col2:
-    model = st.selectbox("語言模型", models.keys())
+    model = st.selectbox("Gemini 語言模型", models)
 
 # Create session state variables
 if 'client' not in st.session_state:
-    st.session_state.client = OpenAI(**models[model])
-    st.session_state.messages = []
+    st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
+    st.session_state.contents = []
     st.session_state.knowledge = {}
     for csv in csvs:
         with open(csv) as f:
             st.session_state.knowledge[csv] = ''.join(f.readlines())
+        st.session_state.knowledge['DataFrame of '+csv] = pd.read_csv(csv)
+client = st.session_state.client
 
-retrieval_prompt = '使用者提問與下方資料表中有關的id，輸出成JSON\n\n\n' + st.session_state.knowledge[csv]
-
-# Display the existing chat messages via `st.chat_message`.
-for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar=None if message["role"] == "user" else '👩🏻‍💼'):
-        st.markdown(message["content"])
+# include and display the last 5 turns of conversation before the current turn
+st.session_state.contents = st.session_state.contents[-10:]
+for content in st.session_state.contents:
+    with st.chat_message(content.role, avatar=None if content.role == "user" else '👩🏻‍💼'):
+        st.markdown(content.parts[0].text)
 
 # Create a chat input field to allow the user to enter a message. This will display
 # automatically at the bottom of the page.
-if user_prompt := st.chat_input("問我總經相關的問題吧"):
-
-    # Store and display the current user_prompt.
-    st.session_state.messages.append({"role": "user", "content": user_prompt})
+if user_prompt := st.chat_input("您好！我是MM Madam，歡迎問我財經時事相關的問題！"):
     with st.chat_message("user"):
         st.markdown(user_prompt)
+    st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    # Last 5 rounds of conversation queued
-    st.session_state.messages = st.session_state.messages[-11:]
-    # Generate a response using the OpenAI API.
-    response = st.session_state.client.chat.completions.create(
-        model=model,
-        messages=[
-            {'role': 'system', 'content': retrieval_prompt},
-            ] + st.session_state.messages,
-        # stream=True,
-        response_format={"type": "json_object"},
-    )
-
-    system_prompt = '妳是總經投資平台「財經M平方（MacroMicro）」的AI研究員：Madame。妳會依據平台知識庫搜尋結果回答問題，並提供圖表連結（https://www.macromicro.me/charts/{id}/{slug}）。若非總經相關問題，妳會告知不便回答。\n\n搜尋結果如下：\n' + response.choices[0].message.content
+    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳目前的工作是回答財經時事相關的問題。'
+    if is_economics_related():
+        df = st.session_state.knowledge['DataFrame of '+csv]
+        if chart_ids := get_relevant_chart_ids():
+            retrieval = df[df['id'].isin(chart_ids)].to_csv(index=False, quoting=1)
+            system_prompt += '''妳會依據MacroMicro圖表資料及Google搜尋結果回答問題，並且提供MacroMicro圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後空格或換行。
+            
+            MacroMicro圖表資料.csv 如下\n''' + retrieval
+            print(chart_ids)
+    else:
+        system_prompt += '若非財經時事相關的問題，妳會婉拒回答。'
     print(system_prompt)
-    stream = st.session_state.client.chat.completions.create(
+    response = client.models.generate_content(
         model=model,
-        messages=[
-            {'role': 'system', 'content': system_prompt},
-            ] + st.session_state.messages,
-        stream=True,
+        contents=st.session_state.contents,
+        config=GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=[Tool(google_search=GoogleSearch())],
+            response_mime_type="text/plain",
+        ),
     )
     # Stream the response to the chat using `st.write_stream`, then store it in 
     # session state.
     with st.chat_message("assistant", avatar='👩🏻‍💼'):
-        response = st.write_stream(stream)
-    st.session_state.messages.append({"role": "assistant", "content": response})
+        st.markdown(response.text)
+    st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=response.text)]))
