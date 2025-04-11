@@ -126,12 +126,12 @@ for content in st.session_state.contents:
 
 # Create a chat input field to allow the user to enter a message. This will display
 # automatically at the bottom of the page.
-if user_prompt := st.chat_input("您好！我是MM Madam，歡迎問我財經時事相關的問題！"):
+if user_prompt := st.chat_input("財經時事相關問題，例如：川普關稅最新進展與對台衝擊？"):
     with st.chat_message("user"):
         st.markdown(user_prompt)
     st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳目前的工作是回答財經時事相關的問題。'
+    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳目前的工作是回答財經時事相關問題。'
     if is_economics_related():
         df = st.session_state.knowledge['DataFrame of '+csv]
         if chart_ids := get_relevant_chart_ids():
@@ -141,7 +141,7 @@ if user_prompt := st.chat_input("您好！我是MM Madam，歡迎問我財經時
             MacroMicro圖表資料.csv 如下\n''' + retrieval
             print(chart_ids)
     else:
-        system_prompt += '若非財經時事相關的問題，妳會婉拒回答。'
+        system_prompt += '若非財經時事相關問題，妳會婉拒回答。'
     print(system_prompt)
     response = client.models.generate_content(
         model=model,
