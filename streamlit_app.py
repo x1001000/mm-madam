@@ -74,7 +74,7 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的專業問答。'
+    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的專業問答，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。'
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
         if has_search:
@@ -82,19 +82,19 @@ if user_prompt:
         if has_chart:
             csv = [csv for csv in csvs if 'chart' in csv][0]
             retrieval = get_relevant_json(csv)
-            system_prompt += '\n並且引用以下MacroMicro圖表相關內容，提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後空格或換行。\n' + retrieval
+            system_prompt += '\n妳會融入以下MacroMicro圖表相關內容，提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後空格或換行。\n' + retrieval
         if has_quickie:
             csv = [csv for csv in csvs if 'quickie' in csv][0]
             retrieval = get_relevant_json(csv)
-            system_prompt += '\n並且引用以下MacroMicro短評相關內容，提供MM短評超連結 https://www.macromicro.me/quickie?id={id} ，超連結前後空格或換行。\n' + retrieval
+            system_prompt += '\n妳會融入以下MacroMicro短評相關內容，提供MM短評超連結 https://www.macromicro.me/quickie?id={id} ，超連結前後空格或換行。\n' + retrieval
         if has_blog:
             csv = [csv for csv in csvs if 'blog' in csv][0]
             retrieval = get_relevant_json(csv)
-            system_prompt += '\n並且引用以下MacroMicro部落格相關內容，提供MM部落格超連結 https://www.macromicro.me/blog/{slug} ，超連結前後空格或換行。\n' + retrieval
+            system_prompt += '\n妳會融入以下MacroMicro部落格相關內容，提供MM部落格超連結 https://www.macromicro.me/blog/{slug} ，超連結前後空格或換行。\n' + retrieval
         if has_edm:
             csv = [csv for csv in csvs if 'edm' in csv][0]
             retrieval = get_relevant_json(csv)
-            system_prompt += '\n並且引用以下MacroMicro獨家報告相關內容回答問題。\n' + retrieval
+            system_prompt += '\n妳會融入以下MacroMicro獨家報告相關內容回答問題。\n' + retrieval
     if user_prompt_type == '2':
         system_prompt += '妳會提供財經M平方的客戶服務、商務合作等相關資訊。'
     if user_prompt_type == '3':
