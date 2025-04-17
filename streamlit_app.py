@@ -35,15 +35,6 @@ def get_relevant_json(csv) -> str:
     )
     return response.text
 
-with st.sidebar:
-    st.title('👩🏻‍💼 MM Madam')
-    st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
-    has_search = st.toggle('Google搜尋', value=True)
-    has_chart = st.toggle('MM圖表', value=True)
-    has_quickie = st.toggle('MM短評', value=True)
-    has_blog = st.toggle('MM部落格', value=True)
-    has_edm = st.toggle('MM獨家報告', value=True)
-
 # Create session state variables
 if 'client' not in st.session_state:
     st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
@@ -60,6 +51,15 @@ else:
     user_prompt = st.chat_input('Ask Madam')
 client = st.session_state.client
 model = 'gemini-2.0-flash'
+
+with st.sidebar:
+    st.title('👩🏻‍💼 MM Madam')
+    st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
+    has_search = st.toggle('🔍 Google搜尋', value=True)
+    has_chart = st.toggle('📊 MM圖表', value=True)
+    has_quickie = st.toggle('💡 MM短評', value=True)
+    has_blog = st.toggle('📝 MM部落格', value=False)
+    has_edm = st.toggle('📮 MM獨家報告', value=False)
 
 # include and display the last 5 turns of conversation before the current turn
 st.session_state.contents = st.session_state.contents[-10:]
