@@ -1,7 +1,8 @@
 import streamlit as st
 from google import genai
 from google.genai.types import Tool, GenerateContentConfig, GoogleSearch, Content, Part
-# import pandas as pd
+import json
+import pandas as pd
 import glob
 csvs =  glob.glob('data/*.csv')
 
@@ -23,8 +24,9 @@ def get_user_prompt_type() -> str:
     )
     return response.text.strip()
 
-def get_relevant_json(csv) -> str:
-    system_prompt = 'Given a user question, identify relevant CSVs.\n' + st.session_state.knowledge[csv]
+def get_relevant_ids_json(csv) -> str:
+    system_prompt = 'Given a user question, identify relevant records in the CSV file, output only ids\n\n'
+    system_prompt += st.session_state.knowledge[csv]
     response = client.models.generate_content(
         model=model,
         contents=st.session_state.contents[-1:],
@@ -33,6 +35,7 @@ def get_relevant_json(csv) -> str:
             response_mime_type="application/json",
         )
     )
+    print(csv, response.text)
     return response.text
 
 # Create session state variables
@@ -43,9 +46,9 @@ if 'client' not in st.session_state:
     for csv in csvs:
         with open(csv) as f:
             st.session_state.knowledge[csv] = ''.join(f.readlines())
-        # st.session_state.knowledge['DataFrame of '+csv] = pd.read_csv(csv)
+        st.session_state.knowledge['DataFrame of '+csv] = pd.read_csv(csv)
     with st.container():
-        st.subheader("財經時事相關問題，例如：為何美債殖利率大漲？")
+        st.subheader("財經時事相關問題，例如：美債殖利率為何飆高？")
         user_prompt = st.chat_input('Ask Madam')
 else:
     user_prompt = st.chat_input('Ask Madam')
@@ -55,11 +58,11 @@ model = 'gemini-2.0-flash'
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
     st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
-    has_search = st.toggle('🔍 Google搜尋', value=True)
     has_chart = st.toggle('📊 MM圖表', value=True)
     has_quickie = st.toggle('💡 MM短評', value=True)
-    has_blog = st.toggle('📝 MM部落格', value=False)
-    has_edm = st.toggle('📮 MM獨家報告', value=False)
+    has_blog = st.toggle('📝 MM部落格', value=True)
+    has_edm = st.toggle('📮 MM獨家報告', value=True)
+    has_search = st.toggle('🔍 Google搜尋', value=True)
 
 # include and display the last 5 turns of conversation before the current turn
 st.session_state.contents = st.session_state.contents[-10:]
@@ -74,27 +77,43 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    system_prompt = '妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的專業問答，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。'
+    system_prompt = '# 妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。\n'
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
-        if has_search:
-            system_prompt += '\n妳會參考Google搜尋結果回答問題。'
         if has_chart:
-            csv = [csv for csv in csvs if 'chart' in csv][0]
-            retrieval = get_relevant_json(csv)
-            system_prompt += '\n妳會融入以下MacroMicro圖表相關內容，提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後空格或換行。\n' + retrieval
+            csv = glob.glob('data/chart*.csv')[-1]
+            ids = json.loads(get_relevant_ids_json(csv))
+            ids = [int(id_) for id_ in ids if id_.isdigit()]
+            df = st.session_state.knowledge['DataFrame of '+csv]
+            retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
+            system_prompt += '\n\n## 妳會依據以下MM圖表的資料回答問題，並且提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後要空格或換行。\n'
+            system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_quickie:
-            csv = [csv for csv in csvs if 'quickie' in csv][0]
-            retrieval = get_relevant_json(csv)
-            system_prompt += '\n妳會融入以下MacroMicro短評相關內容，提供MM短評超連結 https://www.macromicro.me/quickie?id={id} ，超連結前後空格或換行。\n' + retrieval
+            csv = glob.glob('data/quickie*.csv')[-1]
+            ids = json.loads(get_relevant_ids_json(csv))[:1]
+            ids = [int(id_) for id_ in ids if id_.isdigit()]
+            df = st.session_state.knowledge['DataFrame of '+csv]
+            retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
+            system_prompt += '\n\n## 妳會依據以下MM短評的資料回答問題，並且提供MM短評超連結 https://www.macromicro.me/quickie?id={id} ，超連結前後要空格或換行。\n'
+            system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_blog:
-            csv = [csv for csv in csvs if 'blog' in csv][0]
-            retrieval = get_relevant_json(csv)
-            system_prompt += '\n妳會融入以下MacroMicro部落格相關內容，提供MM部落格超連結 https://www.macromicro.me/blog/{slug} ，超連結前後空格或換行。\n' + retrieval
+            csv = glob.glob('data/blog*.csv')[-1]
+            ids = json.loads(get_relevant_ids_json(csv))[:1]
+            ids = [int(id_) for id_ in ids if id_.isdigit()]
+            df = st.session_state.knowledge['DataFrame of '+csv]
+            retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
+            system_prompt += '\n\n## 妳會依據以下MM部落格的資料回答問題，並且提供MM部落格超連結 https://www.macromicro.me/blog/{slug} ，超連結前後要空格或換行。\n'
+            system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_edm:
-            csv = [csv for csv in csvs if 'edm' in csv][0]
-            retrieval = get_relevant_json(csv)
-            system_prompt += '\n妳會融入以下MacroMicro獨家報告相關內容回答問題。\n' + retrieval
+            csv = glob.glob('data/edm*.csv')[-1]
+            ids = json.loads(get_relevant_ids_json(csv))[:1]
+            ids = [int(id_) for id_ in ids if id_.isdigit()]
+            df = st.session_state.knowledge['DataFrame of '+csv]
+            retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
+            system_prompt += '\n\n## 妳會依據以下MM獨家報告的資料回答問題。\n'
+            system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
+        if has_search:
+            system_prompt += '\n\n## 妳最終會以Google搜尋做為事實依據。'
     if user_prompt_type == '2':
         system_prompt += '妳會提供財經M平方的客戶服務、商務合作等相關資訊。'
     if user_prompt_type == '3':
@@ -104,8 +123,8 @@ if user_prompt:
         model=model,
         contents=st.session_state.contents,
         config=GenerateContentConfig(
-            system_instruction=system_prompt,
             tools=[Tool(google_search=GoogleSearch())] if has_search else None,
+            system_instruction=system_prompt,
             response_mime_type="text/plain",
         ),
     )
