@@ -38,9 +38,10 @@ def get_relevant_ids_json(csv) -> str:
     print(csv, response.text)
     return response.text
 
-# Create session state variables
-if 'client' not in st.session_state:
+def initialize_client():
     st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
+
+if 'client' not in st.session_state:
     st.session_state.contents = []
     st.session_state.knowledge = {}
     for csv in glob.glob('data/*.csv'):
@@ -49,20 +50,21 @@ if 'client' not in st.session_state:
         st.session_state.knowledge['DataFrame of '+csv] = pd.read_csv(csv)
     with st.container():
         st.subheader("財經時事相關問題，例如：美債殖利率為何飆高？")
-        user_prompt = st.chat_input('Ask Madam')
+        user_prompt = st.chat_input('Ask Madam', on_submit=initialize_client)
 else:
+    client = st.session_state.client
     user_prompt = st.chat_input('Ask Madam')
-client = st.session_state.client
+
 model = 'gemini-2.0-flash'
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
     has_chart = st.toggle('📊 MM圖表', value=True)
     has_quickie = st.toggle('💡 MM短評', value=True)
     has_blog = st.toggle('📝 MM部落格', value=True)
     has_edm = st.toggle('📮 MM獨家報告', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
+    st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
 
 # include and display the last 5 turns of conversation before the current turn
 st.session_state.contents = st.session_state.contents[-10:]
@@ -115,9 +117,9 @@ if user_prompt:
         if has_search:
             system_prompt += '\n\n## 妳最終會以Google搜尋做為事實依據。'
     if user_prompt_type == '2':
-        system_prompt += '妳會提供財經M平方的客戶服務、商務合作等相關資訊。'
+        system_prompt += '\n\n## 妳會提供財經M平方的客戶服務、商務合作等相關資訊。'
     if user_prompt_type == '3':
-        system_prompt += '若非財經時事相關問題，妳會婉拒回答。'
+        system_prompt += '\n\n## 若非財經時事相關問題，妳會婉拒回答。'
     print(system_prompt)
     response = client.models.generate_content(
         model=model,
