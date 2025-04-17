@@ -1,10 +1,10 @@
 import streamlit as st
 from google import genai
 from google.genai.types import Tool, GenerateContentConfig, GoogleSearch, Content, Part
-import json
 import pandas as pd
+import json
 import glob
-csvs =  glob.glob('data/*.csv')
+import re
 
 def get_user_prompt_type() -> str:
     system_prompt = """
@@ -12,7 +12,7 @@ def get_user_prompt_type() -> str:
     1. 總體經濟、財經資訊、金融市場等相關知識或時事
     2. 財經M平方客戶服務、商務合作
     3. 其他
-    回傳數字，無其他文字
+    回傳數字，無其他文字、符號
     """
     response = client.models.generate_content(
         model=model,
@@ -43,7 +43,7 @@ if 'client' not in st.session_state:
     st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
     st.session_state.contents = []
     st.session_state.knowledge = {}
-    for csv in csvs:
+    for csv in glob.glob('data/*.csv'):
         with open(csv) as f:
             st.session_state.knowledge[csv] = ''.join(f.readlines())
         st.session_state.knowledge['DataFrame of '+csv] = pd.read_csv(csv)
@@ -128,8 +128,8 @@ if user_prompt:
             response_mime_type="text/plain",
         ),
     )
-    # Stream the response to the chat using `st.write_stream`, then store it in 
-    # session state.
+    # remove reference markers
+    response_text = re.sub(r'\[\d+\]', '', response.text)
     with st.chat_message("assistant", avatar='👩🏻‍💼'):
-        st.markdown(response.text)
-    st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=response.text)]))
+        st.markdown(response_text)
+    st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=response_text)]))
