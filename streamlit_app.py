@@ -77,7 +77,7 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    system_prompt = '# 妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。\n'
+    system_prompt = '# 妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，儘量使用Markdown表格進行論述，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。\n'
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
         if has_chart:
