@@ -55,8 +55,6 @@ else:
     client = st.session_state.client
     user_prompt = st.chat_input('Ask Madam')
 
-model = 'gemini-2.0-flash'
-
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
     has_chart = st.toggle('📊 MM圖表', value=True)
@@ -64,7 +62,7 @@ with st.sidebar:
     has_blog = st.toggle('📝 MM部落格', value=True)
     has_edm = st.toggle('📮 MM獨家報告', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
-    st.badge('Gemini 2.0 Flash', icon=":material/stars_2:", color="green")
+    model = st.selectbox('Model', ['gemini-2.0-flash', 'gemini-2.5-flash-preview-04-17'])
 
 # include and display the last 5 turns of conversation before the current turn
 st.session_state.contents = st.session_state.contents[-10:]
