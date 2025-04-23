@@ -57,10 +57,12 @@ else:
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    has_chart = st.toggle('📊 MM圖表', value=True)
-    has_quickie = st.toggle('💡 MM短評', value=True)
-    has_blog = st.toggle('📝 MM部落格', value=True)
-    has_edm = st.toggle('📮 MM獨家報告', value=True)
+    is_paid_user = st.toggle('💎 付費用戶', value=True)
+    has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
+    has_quickie = st.toggle('💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
+    has_blog = st.toggle('📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
+    has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
+    has_help = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     model = st.selectbox('Model', ['gemini-2.0-flash', 'gemini-2.5-flash-preview-04-17'])
 
@@ -77,7 +79,7 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
 
-    system_prompt = '# 妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，儘量使用Markdown表格進行論述，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。\n'
+    system_prompt = '# 妳是「財經M平方（MacroMicro）」的AI研究員：Madam，妳會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用Markdown語法排版、製作表格及超連結，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。\n'
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
         if has_chart:
@@ -86,7 +88,7 @@ if user_prompt:
             ids = [int(id_) for id_ in ids if id_.isdigit()]
             df = st.session_state.knowledge['DataFrame of '+csv]
             retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
-            system_prompt += '\n\n## 妳會依據以下MM圖表的資料回答問題，並且提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} ，超連結前後要空格或換行。\n'
+            system_prompt += '\n\n## 妳會依據以下MM圖表的資料回答問題，並且提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} 。\n'
             system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_quickie:
             csv = glob.glob('data/quickie*.csv')[-1]
@@ -94,7 +96,7 @@ if user_prompt:
             ids = [int(id_) for id_ in ids if id_.isdigit()]
             df = st.session_state.knowledge['DataFrame of '+csv]
             retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
-            system_prompt += '\n\n## 妳會依據以下MM短評的資料回答問題，並且提供MM短評超連結 https://www.macromicro.me/quickie?id={id} ，超連結前後要空格或換行。\n'
+            system_prompt += '\n\n## 妳會依據以下MM短評的資料回答問題，並且提供MM短評超連結 https://www.macromicro.me/quickie?id={id} 。\n'
             system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_blog:
             csv = glob.glob('data/blog*.csv')[-1]
@@ -102,7 +104,7 @@ if user_prompt:
             ids = [int(id_) for id_ in ids if id_.isdigit()]
             df = st.session_state.knowledge['DataFrame of '+csv]
             retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
-            system_prompt += '\n\n## 妳會依據以下MM部落格的資料回答問題，並且提供MM部落格超連結 https://www.macromicro.me/blog/{slug} ，超連結前後要空格或換行。\n'
+            system_prompt += '\n\n## 妳會依據以下MM部落格的資料回答問題，並且提供MM部落格超連結 https://www.macromicro.me/blog/{slug} 。\n'
             system_prompt += json.dumps(retrieval_dict, ensure_ascii=False)
         if has_edm:
             csv = glob.glob('data/edm*.csv')[-1]
