@@ -36,7 +36,7 @@ def get_user_prompt_type() -> str:
     """
     response = client.models.generate_content(
         model=model,
-        contents=st.session_state.contents[-1:],
+        contents=user_prompt,
         config=GenerateContentConfig(
             system_instruction=system_prompt,
             response_mime_type="text/plain",
@@ -46,9 +46,9 @@ def get_user_prompt_type() -> str:
     return response.text.strip()
 
 # 2nd ~ 6th API calls
-def get_relevant_ids(json_file) -> str:
-    system_prompt = 'Given a user query, identify relevant ids in the JSON file, output only ids and no other text.\n'
-    system_prompt += st.session_state.knowledge[json_file]
+def get_relevant_ids(csv_df_json) -> str:
+    system_prompt = 'Given a user query, identify relevant ids in the JSON below, output only ids and no other text.\n'
+    system_prompt += st.session_state.knowledge[csv_df_json]
     try:
         response = client.models.generate_content(
             model=model,
@@ -56,7 +56,6 @@ def get_relevant_ids(json_file) -> str:
             config=GenerateContentConfig(
                 system_instruction=system_prompt,
                 response_mime_type="application/json",
-                # http_options=HttpOptions(timeout=30000),
             )
         )
         result = response.text
@@ -65,22 +64,21 @@ def get_relevant_ids(json_file) -> str:
         print(f"Errrr: {e}")
         result = '[]'
     finally:
-        print(json_file, result)
+        print(csv_df_json, result)
         return result
 
 def get_retrieval(knowledge_type, latest=False) -> str:
     csv_file = sorted(glob.glob(f'{knowledge_type}*.csv'))[-1]
-    json_file = sorted(glob.glob(f'{knowledge_type}*.json'))[-1]
     try:
-        ids = json.loads(get_relevant_ids(json_file))
+        ids = json.loads(get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'))
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e}")
         ids = None
     if ids:
-        if type(ids[0]) == str:
-            ids = [int(id_) for id_ in ids]
-        else:
+        if type(ids[0]) is dict:
             ids = [int(id_['id']) for id_ in ids]
+        else:
+            ids = [int(id_) for id_ in ids]
         if latest:
             ids = sorted(ids)[-1:]
         df = st.session_state.knowledge[csv_file]
@@ -96,10 +94,9 @@ if 'client' not in st.session_state:
     st.session_state.contents = []
     st.session_state.knowledge = {}
     for csv_file in glob.glob('knowledge/*.csv'):
-        st.session_state.knowledge[csv_file] = pd.read_csv(csv_file)
-    for json_file in glob.glob('knowledge/*.json'):
-        with open(json_file) as f:
-            st.session_state.knowledge[json_file] = ''.join(f.readlines())
+        df = pd.read_csv(csv_file)
+        st.session_state.knowledge[csv_file] = df
+        st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
     with st.container():
         st.subheader("財經時事相關問題，例如：美債殖利率為何飆高？")
         user_prompt = st.chat_input('Ask Madam', on_submit=initialize_client)
