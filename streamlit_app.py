@@ -81,9 +81,17 @@ def get_retrieval(knowledge_type, latest=False) -> str:
             ids = [int(id_) for id_ in ids]
         if latest:
             ids = sorted(ids)[-1:]
+        if user_prompt_type == '2':
+            df = pd.DataFrame(columns=['id', 'html'])
+            df['id'] = ids
+            htmls = []
+            for id_ in ids:
+                with open(glob.glob(f'{knowledge_type}*{id_}.html')[0]) as f:
+                    htmls.append(''.join(f.readlines()))
+            df['html'] = htmls
+            return df.to_json(orient='records', force_ascii=False)
         df = st.session_state.knowledge[csv_file]
-        retrieval_dict = df[df['id'].isin(ids)].to_dict(orient='records')
-        return json.dumps(retrieval_dict, ensure_ascii=False)
+        return df[df['id'].isin(ids)].to_json(orient='records', force_ascii=False)
     else:
         return ''
 
@@ -93,7 +101,7 @@ def initialize_client():
 if 'client' not in st.session_state:
     st.session_state.contents = []
     st.session_state.knowledge = {}
-    for csv_file in glob.glob('knowledge/*.csv'):
+    for csv_file in glob.glob('knowledge/*.csv') + glob.glob('knowledge/*/*/*.csv'):
         df = pd.read_csv(csv_file)
         st.session_state.knowledge[csv_file] = df
         st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
@@ -113,7 +121,7 @@ with st.sidebar:
     has_quickie = st.toggle('💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle('📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
-    has_help = st.toggle('❓ MM幫助中心', value=True)
+    has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     st.markdown('---')
     model = st.selectbox('Model', price.keys())
@@ -134,29 +142,35 @@ if user_prompt:
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
         if not is_paid_user:
-            system_prompt += '\n# 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://www.macromicro.me/subscribe 。'
+            system_prompt += '\n\n# 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://www.macromicro.me/subscribe 。'
         if has_chart:
             if retrieval := get_retrieval('knowledge/chart'):
-                system_prompt += '\n# 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
+                system_prompt += '\n\n# 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_quickie:
             if retrieval := get_retrieval('knowledge/quickie', latest=True):
-                system_prompt += '\n# 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
+                system_prompt += '\n\n# 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
                 system_prompt += '\n' + retrieval
         if has_blog:
             if retrieval := get_retrieval('knowledge/blog', latest=True):
-                system_prompt += '\n# 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
+                system_prompt += '\n\n# 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_edm:
             if retrieval := get_retrieval('knowledge/edm', latest=True):
-                system_prompt += '\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
+                system_prompt += '\n\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
         if has_search:
-            system_prompt += '\n# 你最終會以Google搜尋做為事實依據回答用戶提問。'
+            system_prompt += '\n\n# 你最終會以Google搜尋做為事實依據回答用戶提問。'
     if user_prompt_type == '2':
-        system_prompt += '\n# 你會提供財經M平方的客戶服務、商務合作等相關資訊。'
+        if has_hc:
+            if retrieval := get_retrieval('knowledge/hc*/zh-tw/'):
+                system_prompt += '\n\n# 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/zh-tw/articles/{id} 。'
+                system_prompt += '\n' + retrieval
+            if retrieval := get_retrieval('knowledge/hc*/en-001/'):
+                system_prompt += '\n\n# You will answer user inquiries based on the knowledge as follows and provide the link to the MM Help Center. https://support.macromicro.me/hc/en-001/articles/{id} 。'
+                system_prompt += '\n' + retrieval
     if user_prompt_type == '3':
-        system_prompt += '\n# 若非財經時事相關問題，你會婉拒回答。'
+        system_prompt += '\n\n# 若非財經時事相關問題，你會婉拒回答。'
     print(system_prompt)
     try:
         response = client.models.generate_content(
