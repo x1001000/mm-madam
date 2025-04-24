@@ -6,6 +6,25 @@ import json
 import glob
 import re
 
+price = {
+    'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
+    'gemini-2.5-flash-preview-04-17': {'input': 0.15, 'output': 0.6},
+}
+prompt_token_count = 0
+candidates_token_count = 0
+cached_content_token_count = 0
+tool_use_prompt_token_count = 0
+total_token_count = 0
+def accumulate_token_count(usage_metadata):
+    global prompt_token_count, candidates_token_count, cached_content_token_count, tool_use_prompt_token_count, total_token_count
+    prompt_token_count += usage_metadata.prompt_token_count
+    candidates_token_count += usage_metadata.candidates_token_count
+    cached_content_token_count += usage_metadata.cached_content_token_count if usage_metadata.cached_content_token_count else 0
+    tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count if usage_metadata.tool_use_prompt_token_count else 0
+    total_token_count += usage_metadata.total_token_count
+def cost():
+    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 2)
+
 # 1st API call
 def get_user_prompt_type() -> str:
     system_prompt = """
@@ -23,6 +42,7 @@ def get_user_prompt_type() -> str:
             response_mime_type="text/plain",
         )
     )
+    accumulate_token_count(response.usage_metadata)
     return response.text.strip()
 
 # 2nd ~ 6th API calls
@@ -40,6 +60,7 @@ def get_relevant_ids(json_file) -> str:
             )
         )
         result = response.text
+        accumulate_token_count(response.usage_metadata)
     except Exception as e:
         print(f"Errrr: {e}")
         result = '[]'
@@ -54,7 +75,7 @@ def get_retrieval(knowledge_type, latest=False) -> str:
         ids = json.loads(get_relevant_ids(json_file))
     except json.JSONDecodeError as e:
         print(f"JSONDecodeError: {e}")
-        ids = []
+        ids = None
     if ids:
         if type(ids[0]) == str:
             ids = [int(id_) for id_ in ids]
@@ -88,7 +109,8 @@ else:
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    system_prompt = '# ' + st.text_area('*系統提示詞，可以調整測試*', '你是財經M平方（MacroMicro）總經投資平台的 AI 研究員 Madam，你會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用 Markdown 語法組織內容，製作格式文字、表格及超連結，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。', height=200)
+    system_prompt = '# ' + st.text_area('*系統提示詞，可以調整測試*', '你是財經M平方（MacroMicro）總經投資平台的 AI 研究員 Madam，你會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用 Markdown 語法組織內容，設計格式文字、表格及超連結，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。', height=180)
+    st.markdown('---')
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
     has_quickie = st.toggle('💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
@@ -96,7 +118,8 @@ with st.sidebar:
     has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
     has_help = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
-    model = st.selectbox('Model', ['gemini-2.0-flash', 'gemini-2.5-flash-preview-04-17'])
+    st.markdown('---')
+    model = st.selectbox('Model', price.keys())
 
 # include and display the last 5 turns of conversation before the current turn
 st.session_state.contents = st.session_state.contents[-10:]
@@ -127,7 +150,7 @@ if user_prompt:
                 system_prompt += '\n' + retrieval
         if has_edm:
             if retrieval := get_retrieval('knowledge/edm', latest=True):
-                system_prompt += '\n# 你會依據以下MM獨家報告的知識回答用戶提問。'
+                system_prompt += '\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告超連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
         if has_search:
             system_prompt += '\n# 你最終會以Google搜尋做為事實依據回答用戶提問。'
@@ -148,6 +171,7 @@ if user_prompt:
         )
         # remove reference markers
         result = re.sub(r'\[\d+\]', '', response.text)
+        accumulate_token_count(response.usage_metadata)
     except Exception as e:
         print(f"Errrr: {e}")
         result = '抱歉，請稍後再試。'
@@ -155,3 +179,5 @@ if user_prompt:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
             st.markdown(result)
         st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=result)]))
+
+        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
