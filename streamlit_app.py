@@ -169,7 +169,8 @@ if user_prompt:
             ),
         )
         # remove reference markers
-        result = re.sub(r'\[\d+\]', '', response.text)
+        # result = re.sub(r'\[\d+\]', '', response.text)
+        result = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
         print(f"Errrr: {e}")
