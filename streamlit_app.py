@@ -106,7 +106,7 @@ else:
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    system_prompt = '# ' + st.text_area('*系統提示詞，可以調整測試*', '你是財經M平方（MacroMicro）總經投資平台的 AI 研究員 Madam，你會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用 Markdown 語法組織內容，設計格式文字、表格及超連結，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。', height=180)
+    system_prompt = '# ' + st.text_area('*系統提示詞，可以調整測試*', '你是財經M平方（MacroMicro）總經投資平台的 AI 研究員 Madam，你會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用 Markdown 語法組織內容，設計格式文字、表格及連結，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。', height=180)
     st.markdown('---')
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
@@ -133,21 +133,23 @@ if user_prompt:
 
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
+        if not is_paid_user:
+            system_prompt += '\n# 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://www.macromicro.me/subscribe 。'
         if has_chart:
             if retrieval := get_retrieval('knowledge/chart'):
-                system_prompt += '\n# 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表超連結 https://www.macromicro.me/charts/{id}/{slug} 。'
+                system_prompt += '\n# 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_quickie:
             if retrieval := get_retrieval('knowledge/quickie', latest=True):
-                system_prompt += '\n# 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評超連結 https://www.macromicro.me/quickie?id={id} 。'
+                system_prompt += '\n# 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
                 system_prompt += '\n' + retrieval
         if has_blog:
             if retrieval := get_retrieval('knowledge/blog', latest=True):
-                system_prompt += '\n# 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格超連結 https://www.macromicro.me/blog/{slug} 。'
+                system_prompt += '\n# 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_edm:
             if retrieval := get_retrieval('knowledge/edm', latest=True):
-                system_prompt += '\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告超連結 https://www.macromicro.me/mails/monthly_report 。'
+                system_prompt += '\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
         if has_search:
             system_prompt += '\n# 你最終會以Google搜尋做為事實依據回答用戶提問。'
