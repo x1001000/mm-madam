@@ -7,10 +7,13 @@ import glob
 import re
 import requests
 
+# to update
+after = '2025-04-01'
 price = {
     'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
     'gemini-2.5-flash-preview-04-17': {'input': 0.15, 'output': 0.6},
 }
+
 prompt_token_count = 0
 candidates_token_count = 0
 cached_content_token_count = 0
@@ -68,7 +71,7 @@ def get_relevant_ids(csv_df_json) -> str:
         print(csv_df_json, result)
         return result
 
-def get_retrieval(knowledge_type, latest=False) -> str:
+def get_retrieval(knowledge_type) -> str:
     csv_file = sorted(glob.glob(f'{knowledge_type}*.csv'))[-1]
     try:
         ids = json.loads(get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'))
@@ -80,8 +83,7 @@ def get_retrieval(knowledge_type, latest=False) -> str:
             ids = [int(id_['id']) for id_ in ids]
         else:
             ids = [int(id_) for id_ in ids]
-        if latest:
-            ids = sorted(ids)[-1:]
+
         if user_prompt_type == '2':
             df = pd.DataFrame(columns=['id', 'html'])
             df['id'] = ids
@@ -91,8 +93,15 @@ def get_retrieval(knowledge_type, latest=False) -> str:
                     htmls.append(''.join(f.readlines()))
             df['html'] = htmls
             return df.to_json(orient='records', force_ascii=False)
+
         df = st.session_state.knowledge[csv_file]
-        return df[df['id'].isin(ids)].to_json(orient='records', force_ascii=False)
+        select_rows = df['id'].isin(ids)
+        # quickie, blog, edm
+        if 'date' in df.columns:
+            select_rows = select_rows & (df['date'] > after)
+            # exclude en blog posts of df['markdown_tc'].isna()
+            select_rows = select_rows & df['markdown_tc'].notna()
+        return df[select_rows].to_json(orient='records', force_ascii=False)
     else:
         return ''
 
@@ -155,15 +164,15 @@ if user_prompt:
                 system_prompt += '\n\n- 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_quickie:
-            if retrieval := get_retrieval('knowledge/quickie', latest=True):
+            if retrieval := get_retrieval('knowledge/quickie'):
                 system_prompt += '\n\n- 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
                 system_prompt += '\n' + retrieval
         if has_blog:
-            if retrieval := get_retrieval('knowledge/blog', latest=True):
+            if retrieval := get_retrieval('knowledge/blog'):
                 system_prompt += '\n\n- 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_edm:
-            if retrieval := get_retrieval('knowledge/edm', latest=True):
+            if retrieval := get_retrieval('knowledge/edm'):
                 system_prompt += '\n\n- 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
         # if has_search:
