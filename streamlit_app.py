@@ -173,8 +173,11 @@ if user_prompt:
             if retrieval := get_retrieval('knowledge/hc*/zh-tw/'):
                 system_prompt += '\n\n- 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/zh-tw/articles/{id} 。'
                 system_prompt += '\n' + retrieval
-            if retrieval := get_retrieval('knowledge/hc*/en-001/'):
+            elif retrieval := get_retrieval('knowledge/hc*/en-001/'):
                 system_prompt += '\n\n- You will answer user inquiries based on the knowledge as follows and provide the link to the MM Help Center. https://support.macromicro.me/hc/en-001/articles/{id} 。'
+                system_prompt += '\n' + retrieval
+            elif retrieval := get_retrieval('knowledge/hc*/zh-cn/'):
+                system_prompt += '\n\n- 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/zh-cn/articles/{id} 。'
                 system_prompt += '\n' + retrieval
     if user_prompt_type == '3':
         system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答。'
