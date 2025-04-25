@@ -5,6 +5,7 @@ import pandas as pd
 import json
 import glob
 import re
+import requests
 
 price = {
     'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
@@ -110,11 +111,13 @@ if 'client' not in st.session_state:
         user_prompt = st.chat_input('Ask Madam', on_submit=initialize_client)
 else:
     client = st.session_state.client
+    # When st.chat_input is used in the main body of an app, it will be pinned to the bottom of the page.
     user_prompt = st.chat_input('Ask Madam')
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    system_prompt = '# ' + st.text_area('*系統提示詞，可以調整測試*', '你是財經M平方（MacroMicro）總經投資平台的 AI 研究員 Madam，你會提供總體經濟、財經資訊、金融市場等相關知識的科普及專業問答，使用 Markdown 語法組織內容，設計格式文字、表格及超連結，網址與前後文隔開，當提及『財經M平方』或『MacroMicro』時，務必使用『我們』。', height=180)
+    st.link_button('系統提示詞共筆，原則只增不刪，如需刪除請以註解方式說明原因，編輯同時問答立即生效，無需重新整理網頁', 'https://docs.google.com/document/d/1HOS7nntBTgfuSlUpHgDIfBed5M_bq4dH0H8kqXUO9PE/edit?usp=sharing', icon='📝')
+    st.link_button('請協助使用優化過的系統提示詞，對題庫進行一輪實測，複製貼上AI生成答覆，提供AI專案會議討論', 'https://docs.google.com/spreadsheets/d/1pe3d54QEyU0xQ_vJe_308UK9FzLYQJl7EQZkSyYgLeA/edit?usp=sharing', icon='💬')
     st.markdown('---')
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
@@ -123,17 +126,21 @@ with st.sidebar:
     has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
+    has_memory = st.toggle('🧠 記得五次問答', value=False)
     st.markdown('---')
     model = st.selectbox('Model', price.keys())
 
-# include and display the last 5 turns of conversation before the current turn
-st.session_state.contents = st.session_state.contents[-10:]
-for content in st.session_state.contents:
-    with st.chat_message(content.role, avatar=None if content.role == "user" else '👩🏻‍💼'):
-        st.markdown(content.parts[0].text)
+if has_memory:
+    # include and display the last 5 turns of conversation before the current turn
+    st.session_state.contents = st.session_state.contents[-10:]
+    for content in st.session_state.contents:
+        with st.chat_message(content.role, avatar=None if content.role == "user" else '👩🏻‍💼'):
+            st.markdown(content.parts[0].text)
+else:
+    # clear the conversation history
+    st.session_state.contents = []
 
-# Create a chat input field to allow the user to enter a message. This will display
-# automatically at the bottom of the page.
+system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
 if user_prompt:
     with st.chat_message("user"):
         st.markdown(user_prompt)
@@ -142,36 +149,37 @@ if user_prompt:
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
         if not is_paid_user:
-            system_prompt += '\n\n# 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://www.macromicro.me/subscribe 。'
+            system_prompt += '\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://www.macromicro.me/subscribe 。'
         if has_chart:
             if retrieval := get_retrieval('knowledge/chart'):
-                system_prompt += '\n\n# 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
+                system_prompt += '\n\n- 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://www.macromicro.me/charts/{id}/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_quickie:
             if retrieval := get_retrieval('knowledge/quickie', latest=True):
-                system_prompt += '\n\n# 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
+                system_prompt += '\n\n- 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://www.macromicro.me/quickie?id={id} 。'
                 system_prompt += '\n' + retrieval
         if has_blog:
             if retrieval := get_retrieval('knowledge/blog', latest=True):
-                system_prompt += '\n\n# 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
+                system_prompt += '\n\n- 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://www.macromicro.me/blog/{slug} 。'
                 system_prompt += '\n' + retrieval
         if has_edm:
             if retrieval := get_retrieval('knowledge/edm', latest=True):
-                system_prompt += '\n\n# 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
+                system_prompt += '\n\n- 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
-        if has_search:
-            system_prompt += '\n\n# 你最終會以Google搜尋做為事實依據回答用戶提問。'
+        # if has_search:
+        #     system_prompt += '\n\n- 你最終會以Google搜尋做為事實依據回答用戶提問。'
     if user_prompt_type == '2':
         if has_hc:
             if retrieval := get_retrieval('knowledge/hc*/zh-tw/'):
-                system_prompt += '\n\n# 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/zh-tw/articles/{id} 。'
+                system_prompt += '\n\n- 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/zh-tw/articles/{id} 。'
                 system_prompt += '\n' + retrieval
             if retrieval := get_retrieval('knowledge/hc*/en-001/'):
-                system_prompt += '\n\n# You will answer user inquiries based on the knowledge as follows and provide the link to the MM Help Center. https://support.macromicro.me/hc/en-001/articles/{id} 。'
+                system_prompt += '\n\n- You will answer user inquiries based on the knowledge as follows and provide the link to the MM Help Center. https://support.macromicro.me/hc/en-001/articles/{id} 。'
                 system_prompt += '\n' + retrieval
     if user_prompt_type == '3':
-        system_prompt += '\n\n# 若非財經時事相關問題，你會婉拒回答。'
+        system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答。'
     print(system_prompt)
+    # st.markdown(system_prompt)
     try:
         response = client.models.generate_content(
             model=model,
