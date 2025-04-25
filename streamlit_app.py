@@ -133,6 +133,7 @@ with st.sidebar:
     has_quickie = st.toggle('💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle('📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
+    has_stocks = st.toggle('📈 MM美股財報資料庫', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得五次問答', value=False)
@@ -175,6 +176,8 @@ if user_prompt:
             if retrieval := get_retrieval('knowledge/edm'):
                 system_prompt += '\n\n- 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://www.macromicro.me/mails/monthly_report 。'
                 system_prompt += '\n' + retrieval
+        if has_stocks:
+            system_prompt += '\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的連結 https://www.macromicro.me/stocks/info/{股票代號} 。'
         # if has_search:
         #     system_prompt += '\n\n- 你最終會以Google搜尋做為事實依據回答用戶提問。'
     if user_prompt_type == '2':
