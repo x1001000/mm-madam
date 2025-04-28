@@ -116,7 +116,7 @@ if 'client' not in st.session_state:
         st.session_state.knowledge[csv_file] = df
         st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
     with st.container():
-        st.subheader("財經時事相關問題，例如：美債殖利率為何飆高？")
+        st.subheader("財經時事相關問題，例如：美債殖利率為何飆升？")
         user_prompt = st.chat_input('Ask Madam', on_submit=initialize_client)
 else:
     client = st.session_state.client
@@ -125,7 +125,7 @@ else:
 
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
-    st.link_button('系統提示詞共筆，原則只增不刪，如需刪除請以註解方式說明原因，編輯同時問答立即生效，無需重新整理網頁', 'https://docs.google.com/document/d/1HOS7nntBTgfuSlUpHgDIfBed5M_bq4dH0H8kqXUO9PE/edit?usp=sharing', icon='📝')
+    st.link_button('系統提示詞共筆，原則只增不刪，如需刪除請以註解方式說明原因，編輯同時問答立即生效，無需重新整理此網頁', 'https://docs.google.com/document/d/1HOS7nntBTgfuSlUpHgDIfBed5M_bq4dH0H8kqXUO9PE/edit?usp=sharing', icon='📝')
     st.link_button('請協助使用優化過的系統提示詞，對題庫進行一輪實測，複製貼上AI生成答覆，提供AI專案會議討論', 'https://docs.google.com/spreadsheets/d/1pe3d54QEyU0xQ_vJe_308UK9FzLYQJl7EQZkSyYgLeA/edit?usp=sharing', icon='💬')
     st.markdown('---')
     is_paid_user = st.toggle('💎 付費用戶', value=True)
@@ -136,7 +136,7 @@ with st.sidebar:
     has_stocks = st.toggle('📈 MM美股財報資料庫', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
-    has_memory = st.toggle('🧠 記得五次問答', value=False)
+    has_memory = st.toggle('🧠 記得前五次問答', value=False)
     st.markdown('---')
     model = st.selectbox('Model', price.keys())
 
