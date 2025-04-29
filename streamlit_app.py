@@ -50,14 +50,17 @@ def get_user_prompt_type() -> str:
         result = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
-        print(f"Errrr: {e}")
+        st.code(f"Errrr: {e}")
         result = '3'
     finally:
+        # MUST strip to remove \n
+        result = result.strip()
+        st.code({'1': '用戶提問有關財經', '2': '用戶提問有關客服', '3': '用戶提問無關財經客服'}[result])
         return result
 
 # 2nd ~ 6th API calls
 def get_relevant_ids(csv_df_json) -> str:
-    system_prompt = 'Given a user query, identify relevant ids in the JSON below, output only ids and no other text.\n'
+    system_prompt = 'Given a user query, identify relevant ids, even slightly relevant, in the JSON below, output only ids and no other text.\n'
     system_prompt += st.session_state.knowledge[csv_df_json]
     try:
         response = client.models.generate_content(
@@ -71,17 +74,17 @@ def get_relevant_ids(csv_df_json) -> str:
         result = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
-        print(f"Errrr: {e}")
+        st.code(f"Errrr: {e}")
         result = '[]'
     finally:
-        print(csv_df_json, result)
+        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', result))
         return result
 
 def get_retrieval(csv_file) -> str:
     try:
         ids = json.loads(get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'))
     except json.JSONDecodeError as e:
-        print(f"JSONDecodeError: {e}")
+        st.code(f"JSONDecodeError: {e}")
         ids = None
     if ids:
         if type(ids[0]) is dict:
@@ -219,7 +222,7 @@ if user_prompt:
             system_prompt += '\n\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
     if user_prompt_type == '3':
         system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答'
-    print(system_prompt)
+    st.code(system_prompt)
     # st.markdown(system_prompt)
     try:
         response = client.models.generate_content(
@@ -236,7 +239,7 @@ if user_prompt:
         result = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
-        print(f"Errrr: {e}")
+        st.code(f"Errrr: {e}")
         result = '抱歉，請稍後再試。。。'
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
