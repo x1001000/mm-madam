@@ -177,40 +177,43 @@ if user_prompt:
     if user_prompt_type == '1':
         subdomain = dict(zip(site_languages, subdomains))[site_language]
         if not is_paid_user:
-            system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe 。'
+            system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
             if retrieval := get_retrieval('knowledge/chart.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM圖表的知識回答用戶提問，並且提供MM圖表連結 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}} 。'
-                system_prompt += '\n' + retrieval
-        # only zh-tw and zh-cn have quickie
+                system_prompt += f'\n\n- MM圖表相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
         if has_quickie and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/quickie.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM短評的知識回答用戶提問，並且提供MM短評連結 https://{subdomain}.macromicro.me/quickie?id={{id}} 。'
-                system_prompt += '\n' + retrieval
+                system_prompt += f'\n\n- MM短評相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}'
         if has_blog and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/blog.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://{subdomain}.macromicro.me/blog/{{slug}} 。'
-                system_prompt += '\n' + retrieval
+                system_prompt += f'\n\n- MM部落格相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_blog and site_language == 'English':
             if retrieval := get_retrieval('knowledge/blog_en.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM部落格的知識回答用戶提問，並且提供MM部落格連結 https://{subdomain}.macromicro.me/blog/{{slug}} 。'
-                system_prompt += '\n' + retrieval
-        if has_edm:
+                system_prompt += f'\n\n- MM部落格相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
+        if has_edm and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/edm.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM獨家報告的知識回答用戶提問，並且提供MM獨家報告連結 https://{subdomain}.macromicro.me/mails/monthly_report 。'
-                system_prompt += '\n' + retrieval
+                system_prompt += f'\n\n- MM獨家報告相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
         if has_stocks:
-            system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的連結 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}} 。'
-        # if has_search:
-        #     system_prompt += '\n\n- 你最終會以Google搜尋做為事實依據回答用戶提問。'
+            system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
+        if has_search:
+            system_prompt += '\n\n- 若使用網路搜尋的資料來源，你會加註超連結'
     if user_prompt_type == '2':
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f'\n\n- 你會依據以下MM幫助中心的知識回答用戶提問，並且提供MM幫助中心連結 https://support.macromicro.me/hc/{lang_route}/articles/{{id}} 。'
-                system_prompt += '\n' + retrieval
+                system_prompt += f'\n\n- MM幫助中心相關資料\n{retrieval}'
+                system_prompt += f'\n網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
+            else:
+                system_prompt += '\n\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
+        else:
+            system_prompt += '\n\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
     if user_prompt_type == '3':
-        system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答。'
+        system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答'
     print(system_prompt)
     # st.markdown(system_prompt)
     try:
@@ -229,7 +232,7 @@ if user_prompt:
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
         print(f"Errrr: {e}")
-        result = '抱歉，請稍後再試。'
+        result = '抱歉，請稍後再試。。。'
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
             st.markdown(result)
