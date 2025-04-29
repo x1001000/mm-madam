@@ -38,16 +38,22 @@ def get_user_prompt_type() -> str:
     3. 其他
     回傳數字，無其他文字、符號
     """
-    response = client.models.generate_content(
-        model=model,
-        contents=user_prompt,
-        config=GenerateContentConfig(
-            system_instruction=system_prompt,
-            response_mime_type="text/plain",
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="text/plain",
+            )
         )
-    )
-    accumulate_token_count(response.usage_metadata)
-    return response.text.strip()
+        result = response.text
+        accumulate_token_count(response.usage_metadata)
+    except Exception as e:
+        print(f"Errrr: {e}")
+        result = '3'
+    finally:
+        return result
 
 # 2nd ~ 6th API calls
 def get_relevant_ids(csv_df_json) -> str:
@@ -98,9 +104,6 @@ def get_retrieval(csv_file) -> str:
     else:
         return ''
 
-def initialize_client():
-    st.session_state.client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
-
 site_languages = [
     '繁體中文',
     '简体中文',
@@ -147,13 +150,15 @@ else:
     # clear the conversation history
     st.session_state.contents = []
 
-if 'client' not in st.session_state:
+def get_started():
+    st.session_state.get_started = ...
+if 'get_started' not in st.session_state:
     with st.container():
         subheader_text = dict(zip(site_languages, subheader_texts))[site_language]
         st.subheader(subheader_text)
-        user_prompt = st.chat_input('Ask Madam', on_submit=initialize_client)
+        user_prompt = st.chat_input('Ask Madam', on_submit=get_started)
 else:
-    client = st.session_state.client
+    client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
     # When st.chat_input is used in the main body of an app, it will be pinned to the bottom of the page.
     user_prompt = st.chat_input('Ask Madam')
 
