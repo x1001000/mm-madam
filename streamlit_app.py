@@ -4,10 +4,10 @@ from google.genai.types import Tool, GenerateContentConfig, GoogleSearch, Conten
 import pandas as pd
 import json
 import glob
-import re
 import requests
 
 # to update
+before = '2025-04-28'
 after = '2025-04-01'
 price = {
     'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
@@ -60,7 +60,7 @@ def get_user_prompt_type() -> str:
 
 # 2nd ~ 6th API calls
 def get_relevant_ids(csv_df_json) -> str:
-    system_prompt = 'Given a user query, identify relevant ids, even slightly relevant, in the JSON below, output only ids and no other text.\n'
+    system_prompt = 'Given a user query, identify relevant ids in the JSON below, output only ids and no other text.\n'
     system_prompt += st.session_state.knowledge[csv_df_json]
     try:
         response = client.models.generate_content(
@@ -132,9 +132,9 @@ with st.sidebar:
     site_language = st.radio('網站語系', site_languages, horizontal=True)
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
-    has_quickie = st.toggle('💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
-    has_blog = st.toggle('📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
-    has_edm = st.toggle('📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
+    has_quickie = st.toggle(f'💡 MM短評 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
+    has_blog = st.toggle(f'📝 MM部落格 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
+    has_edm = st.toggle(f'📮 MM獨家報告 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
     has_stocks = st.toggle('📈 MM美股財報資料庫', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
@@ -185,43 +185,59 @@ if user_prompt:
     if user_prompt_type == '1':
         subdomain = dict(zip(site_languages, subdomains))[site_language]
         if not is_paid_user:
-            system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
+            system_prompt += f'\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
             if retrieval := get_retrieval('knowledge/chart.csv'):
-                system_prompt += f'\n\n- MM圖表相關資料\n{retrieval}'
+                system_prompt += f'\n- MM圖表的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
         if has_quickie and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/quickie.csv'):
-                system_prompt += f'\n\n- MM短評相關資料\n{retrieval}'
+                system_prompt += f'\n- MM短評的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}'
         if has_blog and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/blog.csv'):
-                system_prompt += f'\n\n- MM部落格相關資料\n{retrieval}'
+                system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_blog and site_language == 'English':
             if retrieval := get_retrieval('knowledge/blog_en.csv'):
-                system_prompt += f'\n\n- MM部落格相關資料\n{retrieval}'
+                system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_edm and site_language in site_languages[:2]:
             if retrieval := get_retrieval('knowledge/edm.csv'):
-                system_prompt += f'\n\n- MM獨家報告相關資料\n{retrieval}'
+                system_prompt += f'\n- MM獨家報告的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
         if has_stocks:
-            system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
+            system_prompt += f'\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
         if has_search:
-            system_prompt += '\n\n- 若使用網路搜尋的資料來源，你會加註超連結'
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=user_prompt,
+                    config=GenerateContentConfig(
+                        tools=[Tool(google_search=GoogleSearch())],
+                        response_mime_type="text/plain",
+                    ),
+                )
+                result = response.text
+                accumulate_token_count(response.usage_metadata)
+            except Exception as e:
+                st.code(f"Errrr: {e}")
+                result = ''
+            finally:
+                if retrieval := result:
+                    system_prompt += f'\n- 網路搜尋的資料\n```{retrieval}```'
     if user_prompt_type == '2':
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f'\n\n- MM幫助中心相關資料\n{retrieval}'
+                system_prompt += f'\n- MM幫助中心的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
             else:
-                system_prompt += '\n\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
+                system_prompt += '\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
         else:
-            system_prompt += '\n\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
+            system_prompt += '\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
     if user_prompt_type == '3':
-        system_prompt += '\n\n- 若非財經時事相關問題，你會婉拒回答'
+        system_prompt += '\n- 若非財經時事相關問題，你會婉拒回答'
     st.code(system_prompt)
     # st.markdown(system_prompt)
     try:
@@ -229,13 +245,10 @@ if user_prompt:
             model=model,
             contents=st.session_state.contents,
             config=GenerateContentConfig(
-                tools=[Tool(google_search=GoogleSearch())] if has_search else None,
                 system_instruction=system_prompt,
                 response_mime_type="text/plain",
             ),
         )
-        # remove reference markers
-        # result = re.sub(r'\[\d+\]', '', response.text)
         result = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
