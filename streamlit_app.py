@@ -40,7 +40,7 @@ def get_user_prompt_type() -> str:
     try:
         response = client.models.generate_content(
             model=model,
-            contents=user_prompt,
+            contents=st.session_state.contents[-2:],
             config=GenerateContentConfig(
                 system_instruction=system_prompt,
                 response_mime_type="text/plain",
@@ -54,7 +54,7 @@ def get_user_prompt_type() -> str:
     finally:
         # MUST strip to remove \n
         result = result.strip()
-        st.code({'1': '用戶提問有關財經', '2': '用戶提問有關客服', '3': '用戶提問無關財經客服'}[result])
+        st.code({'1': '用戶提問主要關於財經', '2': '用戶提問主要關於客服', '3': '用戶提問與財經或客服無關'}[result])
         return result
 
 # 2nd ~ 6th API calls
