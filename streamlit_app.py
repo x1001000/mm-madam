@@ -60,7 +60,7 @@ def get_user_prompt_type() -> str:
 
 # 2nd ~ 6th API calls
 def get_relevant_ids(csv_df_json) -> str:
-    system_prompt = 'Given a user query, identify relevant ids in the JSON below, output only ids and no other text.\n'
+    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below. Output only the IDs, with no additional text.\n'
     system_prompt += st.session_state.knowledge[csv_df_json]
     try:
         response = client.models.generate_content(
