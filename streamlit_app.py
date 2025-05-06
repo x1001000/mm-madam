@@ -7,7 +7,6 @@ import glob
 import requests
 
 # to update
-before = '2025-04-28'
 after = '2025-04-01'
 price = {
     'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
@@ -132,9 +131,9 @@ with st.sidebar:
     site_language = st.radio('網站語系', site_languages, horizontal=True)
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
-    has_quickie = st.toggle(f'💡 MM短評 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
-    has_blog = st.toggle(f'📝 MM部落格 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
-    has_edm = st.toggle(f'📮 MM獨家報告 {after}~{before}'.replace('-', ''), value=is_paid_user, disabled=not is_paid_user)
+    has_quickie = st.toggle(f'💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
+    has_blog = st.toggle(f'📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
+    has_edm = st.toggle(f'📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
     has_stocks = st.toggle('📈 MM美股財報資料庫', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
@@ -187,23 +186,23 @@ if user_prompt:
         if not is_paid_user:
             system_prompt += f'\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
-            if retrieval := get_retrieval('knowledge/chart.csv'):
-                system_prompt += f'\n- MM圖表的資料\n```{retrieval}```'
+            if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
+                system_prompt += f'\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，善加引用\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
         if has_quickie and site_language in site_languages[:2]:
-            if retrieval := get_retrieval('knowledge/quickie.csv'):
+            if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
                 system_prompt += f'\n- MM短評的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}'
         if has_blog and site_language in site_languages[:2]:
-            if retrieval := get_retrieval('knowledge/blog.csv'):
+            if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
                 system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_blog and site_language == 'English':
-            if retrieval := get_retrieval('knowledge/blog_en.csv'):
+            if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
                 system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_edm and site_language in site_languages[:2]:
-            if retrieval := get_retrieval('knowledge/edm.csv'):
+            if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
                 system_prompt += f'\n- MM獨家報告的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
         if has_stocks:
