@@ -259,3 +259,11 @@ if user_prompt:
         st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=result)]))
 
         st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
+
+        hackmd_note_api = st.secrets['HACKMD_NOTE_API']
+        headers = {f"Authorization": "Bearer {st.secrets['HACKMD_API_TOKEN']}"}
+        r = requests.get(hackmd_note_api, headers=headers)
+        if r.status_code == 200:
+            payload = r.json()['content'] + '\n\n---\n\n'
+            payload += st.session_state.contents[-2]['parts'][0]['text'] + '\n\n---\n\n' + result
+            r = requests.patch(hackmd_note_api, headers=headers, json=payload)
