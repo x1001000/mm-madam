@@ -265,6 +265,6 @@ if user_prompt:
         r = requests.get(hackmd_note_api, headers=headers)
         if r.status_code == 200:
             log = r.json()['content']
-            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + result + '\n---\n'
+            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + result + '\n\n---\n'
             payload = {"content": log,}
             r = requests.patch(hackmd_note_api, headers=headers, json=payload)
