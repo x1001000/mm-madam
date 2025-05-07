@@ -187,7 +187,7 @@ if user_prompt:
             system_prompt += f'\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
             if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
-                system_prompt += f'\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，善加引用\n```{retrieval}```'
+                system_prompt += f'\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
         if has_quickie and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
