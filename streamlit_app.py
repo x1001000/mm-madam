@@ -201,10 +201,10 @@ if user_prompt:
             if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
                 system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
-        if has_edm and site_language in site_languages[:2]:
-            if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
-                system_prompt += f'\n- MM獨家報告的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
+        # if has_edm and site_language in site_languages[:2]:
+        #     if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
+        #         system_prompt += f'\n- MM獨家報告的資料\n```{retrieval}```'
+        #         system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
         if has_stocks:
             system_prompt += f'\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
         if has_search:
@@ -261,9 +261,10 @@ if user_prompt:
         st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
         hackmd_note_api = st.secrets['HACKMD_NOTE_API']
-        headers = {f"Authorization": "Bearer {st.secrets['HACKMD_API_TOKEN']}"}
+        headers = {"Authorization": f"Bearer {st.secrets['HACKMD_API_TOKEN']}"}
         r = requests.get(hackmd_note_api, headers=headers)
         if r.status_code == 200:
-            payload = r.json()['content'] + '\n\n---\n\n'
-            payload += st.session_state.contents[-2]['parts'][0]['text'] + '\n\n---\n\n' + result
+            log = r.json()['content']
+            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + result + '\n---\n'
+            payload = {"content": log,}
             r = requests.patch(hackmd_note_api, headers=headers, json=payload)
