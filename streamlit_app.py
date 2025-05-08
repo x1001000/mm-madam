@@ -46,16 +46,16 @@ def get_user_prompt_type() -> str:
                 response_mime_type="text/plain",
             )
         )
-        result = response.text
+        response_text = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
         st.code(f"Errrr: {e}")
-        result = '3'
+        response_text = '3'
     finally:
         # MUST strip to remove \n
-        result = result.strip()
-        st.code({'1': '用戶提問主要關於財經', '2': '用戶提問主要關於客服', '3': '用戶提問與財經或客服無關'}[result])
-        return result
+        response_text = response_text.strip()
+        st.code({'1': '用戶提問主要關於財經', '2': '用戶提問主要關於客服', '3': '用戶提問與財經或客服無關'}[response_text])
+        return response_text
 
 # 2nd ~ 6th API calls
 def get_relevant_ids(csv_df_json) -> str:
@@ -70,14 +70,14 @@ def get_relevant_ids(csv_df_json) -> str:
                 response_mime_type="application/json",
             )
         )
-        result = response.text
+        response_text = response.text
         accumulate_token_count(response.usage_metadata)
     except Exception as e:
         st.code(f"Errrr: {e}")
-        result = '[]'
+        response_text = '[]'
     finally:
-        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', result))
-        return result
+        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', response_text))
+        return response_text
 
 def get_retrieval(csv_file) -> str:
     try:
@@ -105,6 +105,51 @@ def get_retrieval(csv_file) -> str:
         return df.to_json(orient='records', force_ascii=False)
     else:
         return ''
+
+def add_hyperlink(user_prompt):
+    system_prompt = f'''將輸入的文本中提到的美股、美國ETF、台灣ETF的網址，依序加入陣列，輸出JSON
+    美股網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
+    美國ETF網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
+    台灣ETF網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}'''
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+            ),
+        )
+        urls = response.text
+        accumulate_token_count(response.usage_metadata)
+    except Exception as e:
+        st.code(f"Errrr: {e}")
+        return user_prompt
+    valid_urls = []
+    for url in json.loads(urls):
+        if 'stocks/info' in url or 'etf/us/intro' in url or 'etf/tw/intro' in url:
+            if requests.get(url).status_code == 200:
+                valid_urls.append(url)
+    if valid_urls:
+        system_prompt = '將輸入的文本中提到的美股、美國ETF、台灣ETF，使用以下網址，製成markdown超連結，其餘一字不改回傳。\n' + '\n'.join(valid_urls)
+    else:
+        return user_prompt
+    st.code(system_prompt)
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="text/plain",
+            ),
+        )
+        response_text = response.text
+        accumulate_token_count(response.usage_metadata)
+    except Exception as e:
+        st.code(f"Errrr: {e}")
+    finally:
+        return response_text
 
 site_languages = [
     '繁體中文',
@@ -134,13 +179,13 @@ with st.sidebar:
     has_quickie = st.toggle(f'💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle(f'📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle(f'📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
-    has_stocks = st.toggle('📈 MM美股財報資料庫', value=True)
+    has_hyperlink = st.toggle('📈 MM美股、美國ETF、台灣ETF（連結）', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
     st.markdown('---')
     model = st.selectbox('Model', price.keys())
-
+subdomain = dict(zip(site_languages, subdomains))[site_language]
 if has_memory:
     # include and display the last 5 turns of conversation before the current turn
     st.session_state.contents = st.session_state.contents[-10:]
@@ -182,31 +227,30 @@ if user_prompt:
 
     user_prompt_type = get_user_prompt_type()
     if user_prompt_type == '1':
-        subdomain = dict(zip(site_languages, subdomains))[site_language]
         if not is_paid_user:
-            system_prompt += f'\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
+            system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
             if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
-                system_prompt += f'\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用\n```{retrieval}```'
+                system_prompt += f'\n\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
         if has_quickie and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
-                system_prompt += f'\n- MM短評的資料\n```{retrieval}```'
+                system_prompt += f'\n\n- MM短評的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}'
         if has_blog and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
-                system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
+                system_prompt += f'\n\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
         if has_blog and site_language == 'English':
             if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
-                system_prompt += f'\n- MM部落格的資料\n```{retrieval}```'
+                system_prompt += f'\n\n- MM部落格的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
-        # if has_edm and site_language in site_languages[:2]:
-        #     if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
-        #         system_prompt += f'\n- MM獨家報告的資料\n```{retrieval}```'
-        #         system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
-        if has_stocks:
-            system_prompt += f'\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
+        if has_edm and site_language in site_languages[:2]:
+            if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
+                system_prompt += f'\n\n- MM獨家報告的資料\n```{retrieval}```'
+                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
+        # if has_stocks:
+        #     system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
         if has_search:
             try:
                 response = client.models.generate_content(
@@ -217,19 +261,19 @@ if user_prompt:
                         response_mime_type="text/plain",
                     ),
                 )
-                result = response.text
+                response_text = response.text
                 accumulate_token_count(response.usage_metadata)
             except Exception as e:
                 st.code(f"Errrr: {e}")
-                result = ''
+                response_text = ''
             finally:
-                if retrieval := result:
-                    system_prompt += f'\n- 網路搜尋的資料\n```{retrieval}```'
+                if retrieval := response_text:
+                    system_prompt += f'\n\n- 網路搜尋的資料\n```{retrieval}```'
     if user_prompt_type == '2':
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f'\n- MM幫助中心的資料\n```{retrieval}```'
+                system_prompt += f'\n\n- MM幫助中心的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
             else:
                 system_prompt += '\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
@@ -248,15 +292,17 @@ if user_prompt:
                 response_mime_type="text/plain",
             ),
         )
-        result = response.text
+        response_text = response.text
         accumulate_token_count(response.usage_metadata)
+        if has_hyperlink:
+            response_text = add_hyperlink(response_text)
     except Exception as e:
         st.code(f"Errrr: {e}")
-        result = '抱歉，請稍後再試。。。'
+        response_text = '抱歉，請稍後再試。。。'
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
-            st.markdown(result)
-        st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=result)]))
+            st.markdown(response_text)
+        st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=response_text)]))
 
         st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
@@ -265,6 +311,10 @@ if user_prompt:
         r = requests.get(hackmd_note_api, headers=headers)
         if r.status_code == 200:
             log = r.json()['content']
-            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + result + '\n\n---\n'
+            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
             payload = {"content": log,}
             r = requests.patch(hackmd_note_api, headers=headers, json=payload)
+            if r.status_code != 200:
+                st.code('HackMD API Error: ' + str(r.status_code))
+        else:
+            st.code('HackMD API Error: ' + str(r.status_code))
