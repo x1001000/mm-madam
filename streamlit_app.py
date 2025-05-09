@@ -275,10 +275,11 @@ if user_prompt:
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
                 system_prompt += f'\n\n- MM幫助中心的資料\n```{retrieval}```'
                 system_prompt += f'\n網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
+                system_prompt += '\n不要提到來信或來電聯繫的做法，只有當用戶詢問客服信箱時，才會告知 support@macrmicro.me'
             else:
-                system_prompt += '\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
+                system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
         else:
-            system_prompt += '\n- MM幫助中心無相關資料，請用戶來信 support@macromicro.me'
+            system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
     if user_prompt_type == '3':
         system_prompt += '\n- 若非財經時事相關問題，你會婉拒回答'
     st.code(system_prompt)
