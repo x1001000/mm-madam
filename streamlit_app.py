@@ -315,7 +315,7 @@ if user_prompt:
             chat_log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
             payload = {"content": chat_log,}
             r = requests.patch(hackmd_note_api, headers=headers, json=payload)
-            if r.status_code != 200:
-                st.code('HackMD API Error: ' + str(r.status_code))
-        else:
-            st.code('HackMD API Error: ' + str(r.status_code))
+        #     if r.status_code != 200:
+        #         st.code('HackMD API Error: ' + str(r.status_code))
+        # else:
+        #     st.code('HackMD API Error: ' + str(r.status_code))
