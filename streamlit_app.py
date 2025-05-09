@@ -310,9 +310,10 @@ if user_prompt:
         headers = {"Authorization": f"Bearer {st.secrets['HACKMD_API_TOKEN']}"}
         r = requests.get(hackmd_note_api, headers=headers)
         if r.status_code == 200:
-            log = r.json()['content']
-            log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
-            payload = {"content": log,}
+            chat_log = r.json()['content']
+            chat_log = '# Madam對話紀錄\n\n' + '\n\n---\n'.join(chat_log.split('\n\n---\n')[1:])
+            chat_log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
+            payload = {"content": chat_log,}
             r = requests.patch(hackmd_note_api, headers=headers, json=payload)
             if r.status_code != 200:
                 st.code('HackMD API Error: ' + str(r.status_code))
