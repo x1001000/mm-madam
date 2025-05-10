@@ -171,7 +171,7 @@ lang_routes = [
 with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
     st.link_button('系統提示詞共筆，原則只增不刪，如需刪除請以註解方式說明原因，編輯同時問答立即生效，無需重新整理此網頁', 'https://docs.google.com/document/d/1HOS7nntBTgfuSlUpHgDIfBed5M_bq4dH0H8kqXUO9PE/edit?usp=sharing', icon='📝')
-    st.link_button('請協助使用優化過的系統提示詞，對題庫進行一輪實測，到HackMD寫comment，提供AI專案會議討論', 'https://docs.google.com/spreadsheets/d/1pe3d54QEyU0xQ_vJe_308UK9FzLYQJl7EQZkSyYgLeA/edit?usp=sharing', icon='💬')
+    st.link_button('請協助使用優化過的系統提示詞，對題庫進行一輪實測，到GitHub Gist下方comment，提供AI專案會議討論', 'https://docs.google.com/spreadsheets/d/1pe3d54QEyU0xQ_vJe_308UK9FzLYQJl7EQZkSyYgLeA/edit?usp=sharing', icon='💬')
     st.markdown('---')
     site_language = st.radio('網站語系', site_languages, horizontal=True)
     is_paid_user = st.toggle('💎 付費用戶', value=True)
@@ -307,15 +307,17 @@ if user_prompt:
 
         st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
-        hackmd_note_api = st.secrets['HACKMD_NOTE_API']
-        headers = {"Authorization": f"Bearer {st.secrets['HACKMD_API_TOKEN']}"}
-        r = requests.get(hackmd_note_api, headers=headers)
+        GITHUB_GIST_API = st.secrets['GITHUB_GIST_API']
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {st.secrets['GITHUB_ACCESS_TOKEN']}",
+            "X-GitHub-Api-Version": "2022-11-28"}
+        r = requests.get(GITHUB_GIST_API, headers=headers)
         if r.status_code == 200:
-            chat_log = r.json()['content']
-            chat_log = '# Madam對話紀錄\n\n' + '\n\n---\n'.join(chat_log.split('\n\n---\n')[1:])
+            chat_log = r.json()['files']['madam-log.md']['content']
             chat_log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
-            payload = {"content": chat_log,}
-            r = requests.patch(hackmd_note_api, headers=headers, json=payload)
+            payload = {'files': {'madam-log.md': {"content": chat_log}}}
+            r = requests.patch(GITHUB_GIST_API, headers=headers, json=payload)
         #     if r.status_code != 200:
         #         st.code('HackMD API Error: ' + str(r.status_code))
         # else:
