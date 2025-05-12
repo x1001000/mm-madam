@@ -1,10 +1,16 @@
 import streamlit as st
 from google import genai
-from google.genai.types import Tool, GenerateContentConfig, GoogleSearch, Content, Part
+from google.genai import types
 import pandas as pd
 import json
 import glob
 import requests
+
+from pydantic import BaseModel, Field
+class UserPromptLanguage(BaseModel):
+    language: str = Field(description="The language of the user prompt. Please note: Chinese is divided into Traditional Chinese and Simplified Chinese.")
+class UserPromptType(BaseModel):
+    type: int = Field(description="The type of the user prompt. 1: Economics, Finance, Market, News, 2: Customer Service, 3: Other")
 
 # to update
 after = '2025-04-01'
@@ -28,73 +34,70 @@ def accumulate_token_count(usage_metadata):
 def cost():
     return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 2)
 
+def generate_content(user_prompt, system_prompt, response_type, response_schema, tools):
+    response = client.models.generate_content(
+        model=model,
+        contents=user_prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            response_mime_type=response_type,
+            response_schema=response_schema,
+            tools=tools,
+        )
+    )
+    accumulate_token_count(response.usage_metadata)
+    return response
+
 # 1st API call
-def get_user_prompt_type() -> str:
-    system_prompt = """
-    用戶提問與下列選項何者最相關？
-    1. 總體經濟、財經資訊、金融市場等相關知識或時事
-    2. 財經M平方客戶服務、商務合作
-    3. 其他
-    回傳數字，無其他文字、符號
-    """
+def get_user_prompt_lang():
+    system_prompt = None
+    response_type = 'application/json'
+    response_schema = UserPromptLanguage
+    tools = None
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=st.session_state.contents[-2:],
-            config=GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="text/plain",
-            )
-        )
-        response_text = response.text
-        accumulate_token_count(response.usage_metadata)
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed.language
+        st.code('用戶提問使用的語言：' + response_parsed)
+        return response_parsed
     except Exception as e:
         st.code(f"Errrr: {e}")
-        response_text = '3'
-    finally:
-        # MUST strip to remove \n
-        response_text = response_text.strip()
-        st.code({'1': '用戶提問主要關於財經', '2': '用戶提問主要關於客服', '3': '用戶提問與財經或客服無關'}[response_text])
-        return response_text
+        st.stop()
 
-# 2nd ~ 6th API calls
-def get_relevant_ids(csv_df_json) -> str:
-    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below. Output only the IDs, with no additional text.\n'
+# 2nd API call
+def get_user_prompt_type():
+    user_prompt = st.session_state.contents[-2:]
+    system_prompt = None
+    response_type = 'application/json'
+    response_schema = UserPromptType
+    tools = None
+    try:
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed.type
+        st.code({1: '用戶提問主要關於財經', 2: '用戶提問主要關於客服', 3: '用戶提問與財經或客服無關'}[response_parsed])
+        return response_parsed
+    except Exception as e:
+        st.code(f"Errrr: {e}")
+        st.stop()
+
+# 3rd ~ 7th API calls
+def get_relevant_ids(csv_df_json):
+    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
     system_prompt += st.session_state.knowledge[csv_df_json]
+    response_type = 'application/json'
+    response_schema = list[int]
+    tools = None
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=user_prompt,
-            config=GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
-            )
-        )
-        response_text = response.text
-        accumulate_token_count(response.usage_metadata)
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
+        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', str(response_parsed)))
+        return response_parsed
     except Exception as e:
         st.code(f"Errrr: {e}")
-        response_text = '[]'
-    finally:
-        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', response_text))
-        return response_text
+        st.stop()
 
-def get_retrieval(csv_file) -> str:
-    try:
-        ids = json.loads(get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'))
-    except json.JSONDecodeError as e:
-        st.code(f"JSONDecodeError: {e}")
-        ids = None
-    if ids:
-        if type(ids[0]) is dict:
-            ids = [int(_id['id']) for _id in ids]
-        else:
-            ids = [int(_id) for _id in ids]
-
-        if user_prompt_type == '1':
+def get_retrieval(csv_file):
+    if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
+        if user_prompt_type == 1:
             df = st.session_state.knowledge[csv_file]
             df = df[df['id'].isin(ids)]
-        if user_prompt_type == '2':
+        if user_prompt_type == 2:
             df = pd.DataFrame(columns=['id', 'html'])
             df['id'] = ids
             htmls = []
@@ -103,30 +106,36 @@ def get_retrieval(csv_file) -> str:
                     htmls.append(''.join(f.readlines()))
             df['html'] = htmls
         return df.to_json(orient='records', force_ascii=False)
-    else:
-        return ''
 
+# 8th API call
+def get_retrieval_from_google_search():
+    system_prompt = None
+    response_type = 'text/plain'
+    response_schema = None
+    tools = [types.Tool(google_search=types.GoogleSearch())]
+    try:
+        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
+        return response_text
+    except Exception as e:
+        st.code(f"Errrr: {e}")
+        st.stop()
+
+# 10th ~ 11th API calls
 def add_hyperlink(user_prompt):
     system_prompt = f'''將輸入的文本中提到的美股、美國ETF、台灣ETF的網址，依序加入陣列，輸出JSON
     美股網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
     美國ETF網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
     台灣ETF網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}'''
+    response_type = 'application/json'
+    response_schema = list[str]
+    tools = None
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=user_prompt,
-            config=GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="application/json",
-            ),
-        )
-        urls = response.text
-        accumulate_token_count(response.usage_metadata)
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
     except Exception as e:
         st.code(f"Errrr: {e}")
-        return user_prompt
+        st.stop()
     valid_urls = []
-    for url in json.loads(urls):
+    for url in response_parsed:
         if 'stocks/info' in url or 'etf/us/intro' in url or 'etf/tw/intro' in url:
             if requests.get(url).status_code == 200:
                 valid_urls.append(url)
@@ -135,21 +144,15 @@ def add_hyperlink(user_prompt):
     else:
         return user_prompt
     st.code(system_prompt)
+    response_type = 'text/plain'
+    response_schema = None
+    tools = None
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=user_prompt,
-            config=GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="text/plain",
-            ),
-        )
-        response_text = response.text
-        accumulate_token_count(response.usage_metadata)
+        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
+        return response_text
     except Exception as e:
         st.code(f"Errrr: {e}")
-    finally:
-        return response_text
+        st.stop()
 
 site_languages = [
     '繁體中文',
@@ -219,14 +222,15 @@ if 'knowledge' not in st.session_state:
         st.session_state.knowledge[csv_file] = df
         st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
 
-system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
 if user_prompt:
     with st.chat_message("user"):
         st.markdown(user_prompt)
-    st.session_state.contents.append(Content(role="user", parts=[Part.from_text(text=user_prompt)]))
+    st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
+    user_prompt_lang = get_user_prompt_lang()
     user_prompt_type = get_user_prompt_type()
-    if user_prompt_type == '1':
+    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text.format(user_prompt_lang, user_prompt_lang)
+    if user_prompt_type == 1:
         if not is_paid_user:
             system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
         if has_chart:
@@ -252,24 +256,9 @@ if user_prompt:
         # if has_stocks:
         #     system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
         if has_search:
-            try:
-                response = client.models.generate_content(
-                    model=model,
-                    contents=user_prompt,
-                    config=GenerateContentConfig(
-                        tools=[Tool(google_search=GoogleSearch())],
-                        response_mime_type="text/plain",
-                    ),
-                )
-                response_text = response.text
-                accumulate_token_count(response.usage_metadata)
-            except Exception as e:
-                st.code(f"Errrr: {e}")
-                response_text = ''
-            finally:
-                if retrieval := response_text:
-                    system_prompt += f'\n\n- 網路搜尋的資料\n```{retrieval}```'
-    if user_prompt_type == '2':
+            if retrieval := get_retrieval_from_google_search():
+                system_prompt += f'\n\n- 網路搜尋的資料\n```{retrieval}```'
+    if user_prompt_type == 2:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
@@ -280,30 +269,23 @@ if user_prompt:
                 system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
         else:
             system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
-    if user_prompt_type == '3':
+    if user_prompt_type == 3:
         system_prompt += '\n- 若非財經時事相關問題，你會婉拒回答'
     st.code(system_prompt)
-    # st.markdown(system_prompt)
+    response_type = 'text/plain'
+    response_schema = None
+    tools = None
     try:
-        response = client.models.generate_content(
-            model=model,
-            contents=st.session_state.contents,
-            config=GenerateContentConfig(
-                system_instruction=system_prompt,
-                response_mime_type="text/plain",
-            ),
-        )
-        response_text = response.text
-        accumulate_token_count(response.usage_metadata)
+        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
         if has_hyperlink:
             response_text = add_hyperlink(response_text)
     except Exception as e:
         st.code(f"Errrr: {e}")
-        response_text = '抱歉，請稍後再試。。。'
+        st.stop()
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
             st.markdown(response_text)
-        st.session_state.contents.append(Content(role="model", parts=[Part.from_text(text=response_text)]))
+        st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
 
         st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
@@ -318,7 +300,3 @@ if user_prompt:
             chat_log += st.session_state.contents[-2].parts[0].text + '\n---\n' + response_text + '\n\n---\n'
             payload = {'files': {'madam-log.md': {"content": chat_log}}}
             r = requests.patch(GITHUB_GIST_API, headers=headers, json=payload)
-        #     if r.status_code != 200:
-        #         st.code('HackMD API Error: ' + str(r.status_code))
-        # else:
-        #     st.code('HackMD API Error: ' + str(r.status_code))
