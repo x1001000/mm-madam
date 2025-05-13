@@ -5,12 +5,13 @@ import pandas as pd
 import json
 import glob
 import requests
+import re
 
-from pydantic import BaseModel, Field
-class UserPromptLanguage(BaseModel):
-    language: str = Field(description="The language of the user prompt. Please note: Chinese is divided into Traditional Chinese and Simplified Chinese.")
-class UserPromptType(BaseModel):
-    type: int = Field(description="The type of the user prompt. 1: Economics, Finance, Market, News, 2: Customer Service, 3: Other")
+# from pydantic import BaseModel, Field
+# class LanguageClassification(BaseModel):
+#     language: str = Field(description="語言分三類，第一類：繁體中文，第二類：简体中文，第三類：English")
+# class UserPromptType(BaseModel):
+#     type: int = Field(description="One of the three types of the user prompt. 1: Economics, Finance, Market, News, or 2: Customer Service, Help Center, How-Tos, or 3: Other")
 
 # to update
 after = '2025-04-01'
@@ -50,14 +51,14 @@ def generate_content(user_prompt, system_prompt, response_type, response_schema,
 
 # 1st API call
 def get_user_prompt_lang():
-    system_prompt = None
+    system_prompt = 'Given a user query, identify its language as one of the three: zh-tw, zh-cn, other'
     response_type = 'application/json'
-    response_schema = UserPromptLanguage
+    response_schema = str # int does not work
     tools = None
     try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed.language
-        st.code('用戶提問使用的語言：' + response_parsed)
-        return response_parsed
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
+        # response_parsed
+        return {'zh-tw': 0, 'zh-cn': 1, 'other': 2}[response_parsed.lower()]
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -65,14 +66,14 @@ def get_user_prompt_lang():
 # 2nd API call
 def get_user_prompt_type():
     user_prompt = st.session_state.contents[-2:]
-    system_prompt = None
+    system_prompt = '問答內容最接近哪一類：財經時事類、網站客服類、其他類'
     response_type = 'application/json'
-    response_schema = UserPromptType
+    response_schema = str # int does not work
     tools = None
     try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed.type
-        st.code({1: '用戶提問主要關於財經', 2: '用戶提問主要關於客服', 3: '用戶提問與財經或客服無關'}[response_parsed])
-        return response_parsed
+        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
+        # response_parsed
+        return {'財經時事類': 1, '網站客服類': 2, '其他類': 3}[response_parsed]
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -120,44 +121,29 @@ def get_retrieval_from_google_search():
         st.code(f"Errrr: {e}")
         st.stop()
 
-# 10th ~ 11th API calls
-def add_hyperlink(user_prompt):
-    system_prompt = f'''將輸入的文本中提到的美股、美國ETF、台灣ETF的網址，依序加入陣列，輸出JSON
-    美股網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
-    美國ETF網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
-    台灣ETF網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}'''
-    response_type = 'application/json'
-    response_schema = list[str]
-    tools = None
-    try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-    except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
-    valid_urls = []
-    for url in response_parsed:
-        if 'stocks/info' in url or 'etf/us/intro' in url or 'etf/tw/intro' in url:
-            if requests.get(url).status_code == 200:
-                valid_urls.append(url)
-    if valid_urls:
-        system_prompt = '將輸入的文本中提到的美股、美國ETF、台灣ETF，使用以下網址，製成markdown超連結，其餘一字不改回傳。\n' + '\n'.join(valid_urls)
-    else:
-        return user_prompt
-    st.code(system_prompt)
-    response_type = 'text/plain'
-    response_schema = None
-    tools = None
-    try:
-        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
-        return response_text
-    except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
+def remove_invalid_urls(response_text):
+    # Find all URLs in the text
+    urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', response_text)
+    
+    for url in urls:
+        try:
+            response = requests.get(url, timeout=5)
+            if response.status_code != 200:
+                response_text = response_text.replace(url, '')
+        except:
+            # Remove URL if request fails
+            response_text = response_text.replace(url, '')
+    
+    return response_text
 
 site_languages = [
     '繁體中文',
     '简体中文',
     'English']
+language_prompts = [
+    '- 使用繁體中文',
+    '- 使用简体中文',
+    '- Use English.']
 subheader_texts = [
     "財經時事相關問題，例如：美債殖利率為何飆升？",
     "财经时事相关问题，例如：美债收益率为何飙升？",
@@ -182,7 +168,7 @@ with st.sidebar:
     has_quickie = st.toggle(f'💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle(f'📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle(f'📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
-    has_hyperlink = st.toggle('📈 MM美股、美國ETF、台灣ETF（連結）', value=True)
+    has_stock_etf = st.toggle('📈 MM美股財報、ETF專區', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
@@ -227,58 +213,113 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
-    user_prompt_lang = get_user_prompt_lang()
+    site_language = site_languages[get_user_prompt_lang()]
+    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
     user_prompt_type = get_user_prompt_type()
-    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text.format(user_prompt_lang, user_prompt_lang)
     if user_prompt_type == 1:
         if not is_paid_user:
-            system_prompt += f'\n\n- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結 https://{subdomain}.macromicro.me/subscribe'
+            system_prompt += f"""
+- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結
+```
+https://{subdomain}.macromicro.me/subscribe
+```
+"""
         if has_chart:
             if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
-                system_prompt += f'\n\n- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}'
+                system_prompt += f"""
+- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用
+```
+{retrieval}
+網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}
+```
+"""
         if has_quickie and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
-                system_prompt += f'\n\n- MM短評的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}'
+                system_prompt += f"""
+- MM短評的資料
+```
+{retrieval}
+網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}
+```
+"""
         if has_blog and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
-                system_prompt += f'\n\n- MM部落格的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
+                system_prompt += f"""
+- MM部落格的資料
+```
+{retrieval}
+網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
+```
+"""
         if has_blog and site_language == 'English':
             if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
-                system_prompt += f'\n\n- MM部落格的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}'
+                system_prompt += f"""
+- MM部落格的資料
+```
+{retrieval}
+網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
+```
+"""
         if has_edm and site_language in site_languages[:2]:
             if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
-                system_prompt += f'\n\n- MM獨家報告的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}'
-        # if has_stocks:
-        #     system_prompt += f'\n\n- 若用戶或你提及美國上市公司，你會提供MM美股財報資料庫中該公司的網頁 https://{subdomain}.macromicro.me/stocks/info/{{股票代號}}'
+                system_prompt += f"""
+- MM獨家報告的資料
+```
+{retrieval}
+網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}
+```
+"""
+        if has_stock_etf:
+            system_prompt += f"""
+- MM美股財報、ETF專區
+```
+美股財報資料網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
+美國ETF專區網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
+台灣ETF專區網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}
+```
+"""
         if has_search:
             if retrieval := get_retrieval_from_google_search():
-                system_prompt += f'\n\n- 網路搜尋的資料\n```{retrieval}```'
+                system_prompt += f"""
+- 網路搜尋的資料
+```
+{retrieval}
+```
+"""
     if user_prompt_type == 2:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f'\n\n- MM幫助中心的資料\n```{retrieval}```'
-                system_prompt += f'\n網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}'
-                system_prompt += '\n不要提到來信或來電聯繫的做法，只有當用戶詢問客服信箱時，才會告知 support@macrmicro.me'
+                system_prompt += f"""
+- MM幫助中心的資料
+```
+{retrieval}
+網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}
+不要提供來信或來電的客服聯繫方式
+```
+"""
             else:
-                system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
+                system_prompt += f"""
+- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
+"""
         else:
-            system_prompt += '\n- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}'
+            system_prompt += f"""
+- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
+"""
     if user_prompt_type == 3:
-        system_prompt += '\n- 若非財經時事相關問題，你會婉拒回答'
-    st.code(system_prompt)
+        system_prompt += f"""
+- 若非財經時事相關問題，你會婉拒回答
+"""
+    '---'
+    system_prompt += dict(zip(site_languages, language_prompts))[site_language]
+    system_prompt
+    '---'
     response_type = 'text/plain'
     response_schema = None
     tools = None
     try:
         response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
-        if has_hyperlink:
-            response_text = add_hyperlink(response_text)
+        response_text = remove_invalid_urls(response_text)
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
