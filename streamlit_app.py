@@ -164,6 +164,7 @@ with st.sidebar:
     has_quickie = st.toggle(f'💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle(f'📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle(f'📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
+    has_podcast = st.toggle(f'🎙️ MM Podcast', value=is_paid_user, disabled=not is_paid_user)
     has_stock_etf = st.toggle('📈 MM美股財報、ETF專區', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
@@ -203,6 +204,11 @@ if 'knowledge' not in st.session_state:
             df = df[df['date'] > after]
         st.session_state.knowledge[csv_file] = df
         st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
+    md = ''
+    for md_file in glob.glob('knowledge/*.md'):
+        with open(md_file) as f:
+            md += ''.join(f.readlines()) + '\n\n---\n'
+    st.session_state.knowledge['podcast'] = md
 
 if user_prompt:
     with st.chat_message("user"):
@@ -263,6 +269,13 @@ https://{subdomain}.macromicro.me/subscribe
 ```
 {retrieval}
 網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}
+```
+"""
+        if has_podcast:
+            system_prompt += f"""
+- MM Podcast( https://podcasts.apple.com/tw/podcast/macromicro-財經m平方/id1522682178 )的資料
+```
+{st.session_state.knowledge['podcast']}
 ```
 """
         if has_stock_etf:
