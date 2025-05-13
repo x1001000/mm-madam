@@ -122,18 +122,14 @@ def get_retrieval_from_google_search():
         st.stop()
 
 def remove_invalid_urls(response_text):
-    # Find all URLs in the text
-    urls = re.findall(r'https?://[^\s<>"]+|www\.[^\s<>"]+', response_text)
-    
+    urls = re.findall(r'http[^\s)]*', response_text)
     for url in urls:
         try:
             response = requests.get(url, timeout=5)
             if response.status_code != 200:
                 response_text = response_text.replace(url, '')
         except:
-            # Remove URL if request fails
             response_text = response_text.replace(url, '')
-    
     return response_text
 
 site_languages = [
