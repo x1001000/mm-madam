@@ -7,12 +7,6 @@ import glob
 import requests
 import re
 
-# from pydantic import BaseModel, Field
-# class LanguageClassification(BaseModel):
-#     language: str = Field(description="語言分三類，第一類：繁體中文，第二類：简体中文，第三類：English")
-# class UserPromptType(BaseModel):
-#     type: int = Field(description="One of the three types of the user prompt. 1: Economics, Finance, Market, News, or 2: Customer Service, Help Center, How-Tos, or 3: Other")
-
 # to update
 after = '2025-04-01'
 price = {
@@ -33,7 +27,7 @@ def accumulate_token_count(usage_metadata):
     tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count if usage_metadata.tool_use_prompt_token_count else 0
     total_token_count += usage_metadata.total_token_count
 def cost():
-    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 2)
+    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 3)
 
 def generate_content(user_prompt, system_prompt, response_type, response_schema, tools):
     response = client.models.generate_content(
@@ -66,14 +60,14 @@ def get_user_prompt_lang():
 # 2nd API call
 def get_user_prompt_type():
     user_prompt = st.session_state.contents[-2:]
-    system_prompt = '問答內容最接近哪一類：財經時事類、網站客服類、其他類'
+    system_prompt = '問答內容最接近哪一類（二選一）：財經時事類、網站客服及其他類'
     response_type = 'application/json'
     response_schema = str # int does not work
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
         # response_parsed
-        return {'財經時事類': 1, '網站客服類': 2, '其他類': 3}[response_parsed]
+        return {'財經時事類': True, '網站客服及其他類': False}[response_parsed]
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -87,6 +81,7 @@ def get_relevant_ids(csv_df_json):
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
+        st.badge('檢索csv資料中相關id，再用id查詢語料', icon="🔍", color="blue")
         st.code(csv_df_json.replace('df.iloc[:,:2].to_json', str(response_parsed)))
         return response_parsed
     except Exception as e:
@@ -95,10 +90,10 @@ def get_relevant_ids(csv_df_json):
 
 def get_retrieval(csv_file):
     if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
-        if user_prompt_type == 1:
+        if user_prompt_type_pro:
             df = st.session_state.knowledge[csv_file]
             df = df[df['id'].isin(ids)]
-        if user_prompt_type == 2:
+        else:
             df = pd.DataFrame(columns=['id', 'html'])
             df['id'] = ids
             htmls = []
@@ -157,7 +152,7 @@ with st.sidebar:
     st.title('👩🏻‍💼 MM Madam')
     st.link_button('系統提示詞共筆，原則只增不刪，如需刪除請以註解方式說明原因，編輯同時問答立即生效，無需重新整理此網頁', 'https://docs.google.com/document/d/1HOS7nntBTgfuSlUpHgDIfBed5M_bq4dH0H8kqXUO9PE/edit?usp=sharing', icon='📝')
     st.link_button('請協助使用優化過的系統提示詞，對題庫進行一輪實測，到GitHub Gist下方comment，提供AI專案會議討論', 'https://docs.google.com/spreadsheets/d/1pe3d54QEyU0xQ_vJe_308UK9FzLYQJl7EQZkSyYgLeA/edit?usp=sharing', icon='💬')
-    st.markdown('---')
+    '---'
     site_language = st.radio('網站語系', site_languages, horizontal=True)
     is_paid_user = st.toggle('💎 付費用戶', value=True)
     has_chart = st.toggle('📊 MM圖表', value=is_paid_user, disabled=not is_paid_user)
@@ -169,7 +164,7 @@ with st.sidebar:
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
-    st.markdown('---')
+    '---'
     model = st.selectbox('Model', price.keys())
 subdomain = dict(zip(site_languages, subdomains))[site_language]
 if has_memory:
@@ -217,8 +212,8 @@ if user_prompt:
 
     site_language = site_languages[get_user_prompt_lang()]
     system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
-    user_prompt_type = get_user_prompt_type()
-    if user_prompt_type == 1:
+    user_prompt_type_pro = get_user_prompt_type()
+    if user_prompt_type_pro:
         if not is_paid_user:
             system_prompt += f"""
 - 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結
@@ -295,7 +290,7 @@ https://{subdomain}.macromicro.me/subscribe
 {retrieval}
 ```
 """
-    if user_prompt_type == 2:
+    else:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
@@ -315,11 +310,10 @@ https://{subdomain}.macromicro.me/subscribe
             system_prompt += f"""
 - 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
 """
-    if user_prompt_type == 3:
         system_prompt += f"""
-- 若非財經時事相關問題，你會婉拒回答
+- 若非網站客服相關問題，你會婉拒回答
 """
-    '---'
+    st.badge('此次問答採用的系統提示詞', icon="📝", color="blue")
     system_prompt += dict(zip(site_languages, language_prompts))[site_language]
     system_prompt
     '---'
