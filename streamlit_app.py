@@ -136,9 +136,9 @@ language_prompts = [
     '- 使用简体中文',
     '- Use English.']
 subheader_texts = [
-    "財經時事相關問題，例如：美債殖利率為何飆升？",
-    "财经时事相关问题，例如：美债收益率为何飙升？",
-    "Financial and economic questions, e.g.: Why are US Treasury yields surging?"]
+    "財經時事或網站客服問題，試試：請介紹MM Max方案",
+    "财经时事或网站客服问题，试试：请介绍MM Max方案",
+    "Financial news or website customer service issues, try: Please introduce MM Max"]
 subdomains = [
     'www',
     'sc',
@@ -178,6 +178,7 @@ else:
     # clear the conversation history
     st.session_state.contents = []
 
+client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
 def get_started():
     st.session_state.get_started = ...
 if 'get_started' not in st.session_state:
@@ -186,7 +187,6 @@ if 'get_started' not in st.session_state:
         st.subheader(subheader_text)
         user_prompt = st.chat_input('Ask Madam', on_submit=get_started)
 else:
-    client = genai.Client(api_key=st.secrets['GEMINI_API_KEY'])
     # When st.chat_input is used in the main body of an app, it will be pinned to the bottom of the page.
     user_prompt = st.chat_input('Ask Madam')
 
