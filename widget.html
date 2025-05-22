@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Widget</title>
+    <link rel="stylesheet" href="widget.css">
+</head>
+<body>
+    <div id="ai-chat-widget-container">
+        <div id="chatbox">
+            <div id="chatbox-header">
+                <span>AI Assistant</span>
+                <button id="close-widget-btn">&times;</button>
+            </div>
+            <div id="chatbox-messages">
+                <!-- Messages will appear here -->
+                <div class="message bot-message"><p>Hello! How can I help you today?</p></div>
+            </div>
+            <div id="chatbox-input">
+                <input type="text" id="user-input" placeholder="Type your message...">
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+        <button id="open-widget-btn">Chat</button>
+    </div>
+    <script src="widget.js"></script>
+</body>
+</html>

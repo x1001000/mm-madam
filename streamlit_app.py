@@ -1,131 +1,52 @@
 import streamlit as st
-from google import genai
-from google.genai import types
+from google.generativeai import types
 import pandas as pd
+# accumulate_token_count is used internally by chat_logic.generate_content, not directly here.
+# prompt_token_count and candidates_token_count are for the badge display.
+from chat_logic import (
+    generate_content,
+    cost,
+    price as chat_logic_price,
+    DEFAULT_MODEL,
+    reset_token_counts,
+    prompt_token_count,
+    candidates_token_count,
+    load_knowledge_data,
+    # Import newly moved retrieval functions
+    remove_invalid_urls,
+    get_retrieval_from_google_search,
+    # get_relevant_ids, # Not called directly from streamlit_app anymore, get_retrieval uses the one in chat_logic
+    get_retrieval,
+    # Import newly moved prompt analysis functions
+    get_user_prompt_lang,
+    get_user_prompt_type,
+    construct_system_prompt # Added import for system prompt construction
+)
+import google.generativeai as genai
 import json
-import glob
-import requests
-import re
+import glob # Re-adding glob as it's used for finding CSV keys
+import requests # Still needed for SYSTEM_PROMPT_URL and GITHUB_GIST_API
+import re # remove_invalid_urls is now in chat_logic, but re might be used elsewhere. Keep for now.
 
-# to update
-after = '2025-04-01'
-price = {
-    'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
-    'gemini-2.5-flash-preview-04-17': {'input': 0.15, 'output': 0.6},
-}
+# 'after' variable is now a default argument in chat_logic.load_knowledge_data
 
-prompt_token_count = 0
-candidates_token_count = 0
-cached_content_token_count = 0
-tool_use_prompt_token_count = 0
-total_token_count = 0
-def accumulate_token_count(usage_metadata):
-    global prompt_token_count, candidates_token_count, cached_content_token_count, tool_use_prompt_token_count, total_token_count
-    prompt_token_count += usage_metadata.prompt_token_count
-    candidates_token_count += usage_metadata.candidates_token_count
-    cached_content_token_count += usage_metadata.cached_content_token_count if usage_metadata.cached_content_token_count else 0
-    tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count if usage_metadata.tool_use_prompt_token_count else 0
-    total_token_count += usage_metadata.total_token_count
-def cost():
-    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 3)
+# Token count variables are now managed in chat_logic.py
 
-def generate_content(user_prompt, system_prompt, response_type, response_schema, tools):
-    response = client.models.generate_content(
-        model=model,
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            response_mime_type=response_type,
-            response_schema=response_schema,
-            tools=tools,
-        )
-    )
-    accumulate_token_count(response.usage_metadata)
-    return response
+# Retrieval functions (get_relevant_ids, get_retrieval, get_retrieval_from_google_search, remove_invalid_urls)
+# are now in chat_logic.py.
+# Functions get_user_prompt_lang and get_user_prompt_type are now in chat_logic.py.
 
-# 1st API call
-def get_user_prompt_lang():
-    system_prompt = 'Given a user query, identify its language as one of the three: zh-tw, zh-cn, other'
-    response_type = 'application/json'
-    response_schema = str # int does not work
-    tools = None
+# Helper function for loading HTML content, to be passed to chat_logic.get_retrieval
+# This remains in streamlit_app.py as it's UI/file-system interaction specific to the app's environment.
+def load_html_file_content(file_path: str) -> str:
     try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-        # response_parsed
-        return {'zh-tw': 0, 'zh-cn': 1, 'other': 2}[response_parsed.lower()]
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
     except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
+        # st.error(f"Failed to load HTML file {file_path}: {e}")
+        print(f"Failed to load HTML file {file_path}: {e}") # Print to console for now
+        return f"Error loading content from {file_path}."
 
-# 2nd API call
-def get_user_prompt_type():
-    user_prompt = st.session_state.contents[-2:]
-    system_prompt = '問答內容最接近哪一類（二選一）：財經時事類、網站客服及其他類'
-    response_type = 'application/json'
-    response_schema = str # int does not work
-    tools = None
-    try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-        # response_parsed
-        return {'財經時事類': True, '網站客服及其他類': False}[response_parsed]
-    except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
-
-# 3rd ~ 7th API calls
-def get_relevant_ids(csv_df_json):
-    system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
-    system_prompt += st.session_state.knowledge[csv_df_json]
-    response_type = 'application/json'
-    response_schema = list[int]
-    tools = None
-    try:
-        response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-        st.badge('檢索csv資料中相關id，再用id查詢語料', icon="🔍", color="blue")
-        st.code(csv_df_json.replace('df.iloc[:,:2].to_json', str(response_parsed)))
-        return response_parsed
-    except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
-
-def get_retrieval(csv_file):
-    if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
-        if user_prompt_type_pro:
-            df = st.session_state.knowledge[csv_file]
-            df = df[df['id'].isin(ids)]
-        else:
-            df = pd.DataFrame(columns=['id', 'html'])
-            df['id'] = ids
-            htmls = []
-            for _id in ids:
-                with open(csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
-                    htmls.append(''.join(f.readlines()))
-            df['html'] = htmls
-        return df.to_json(orient='records', force_ascii=False)
-
-# 8th API call
-def get_retrieval_from_google_search():
-    system_prompt = None
-    response_type = 'text/plain'
-    response_schema = None
-    tools = [types.Tool(google_search=types.GoogleSearch())]
-    try:
-        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
-        return response_text
-    except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
-
-def remove_invalid_urls(response_text):
-    urls = re.findall(r'http[^\s)]*', response_text)
-    for url in urls:
-        try:
-            response = requests.get(url, timeout=5)
-            if response.status_code != 200:
-                response_text = response_text.replace(url, '')
-        except:
-            response_text = response_text.replace(url, '')
-    return response_text
 
 site_languages = [
     '繁體中文',
@@ -165,7 +86,13 @@ with st.sidebar:
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
     '---'
-    model = st.selectbox('Model', price.keys())
+    # Use chat_logic_price for the selectbox, and DEFAULT_MODEL as the default selection
+    # The model variable here will hold the name of the selected model, e.g., 'gemini-1.0-pro'
+    model_name_selected = st.selectbox(
+        'Model',
+        options=list(chat_logic_price.keys()), # Corrected typo here from ऑप्शन्स to options
+        index=list(chat_logic_price.keys()).index(DEFAULT_MODEL) if DEFAULT_MODEL in chat_logic_price else 0
+    )
 subdomain = dict(zip(site_languages, subdomains))[site_language]
 if has_memory:
     # include and display the last 5 turns of conversation before the current turn
@@ -191,147 +118,102 @@ else:
     user_prompt = st.chat_input('Ask Madam')
 
 if 'knowledge' not in st.session_state:
-    st.session_state.knowledge = {}
-    for csv_file in glob.glob('knowledge/*.csv') + glob.glob('knowledge/*/*/*.csv'):
-        df = pd.read_csv(csv_file)
-        # quickie, blog, edm
-        if 'date' in df.columns:
-            df = df[df['date'] > after]
-        st.session_state.knowledge[csv_file] = df
-        st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
-    md = ''
-    for md_file in glob.glob('knowledge/*.md'):
-        with open(md_file) as f:
-            md += ''.join(f.readlines()) + '\n\n---\n'
-    st.session_state.knowledge['podcast'] = md
+    # Load knowledge data using the function from chat_logic.py
+    # The 'after' date is handled by the default argument in load_knowledge_data
+    st.session_state.knowledge = load_knowledge_data()
 
 if user_prompt:
+    # Reset token counts at the beginning of a new user interaction
+    reset_token_counts()
     with st.chat_message("user"):
         st.markdown(user_prompt)
-    st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
+    st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)])) # user_prompt is the text from chat_input
 
-    site_language = site_languages[get_user_prompt_lang()]
-    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
-    user_prompt_type_pro = get_user_prompt_type()
-    if user_prompt_type_pro:
-        if not is_paid_user:
-            system_prompt += f"""
-- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結
-```
-https://{subdomain}.macromicro.me/subscribe
-```
-"""
-        if has_chart:
-            if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
-                system_prompt += f"""
-- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}
-```
-"""
-        if has_quickie and site_language in site_languages[:2]:
-            if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
-                system_prompt += f"""
-- MM短評的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}
-```
-"""
-        if has_blog and site_language in site_languages[:2]:
-            if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
-                system_prompt += f"""
-- MM部落格的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
-```
-"""
-        if has_blog and site_language == 'English':
-            if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
-                system_prompt += f"""
-- MM部落格的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
-```
-"""
-        if has_edm and site_language in site_languages[:2]:
-            if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
-                system_prompt += f"""
-- MM獨家報告的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}
-```
-"""
-        if has_podcast:
-            system_prompt += f"""
-- MM Podcast( https://podcasts.apple.com/tw/podcast/macromicro-財經m平方/id1522682178 )的資料
-```
-{st.session_state.knowledge['podcast']}
-```
-"""
-        if has_stock_etf:
-            system_prompt += f"""
-- MM美股財報、ETF專區
-```
-美股財報資料網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
-美國ETF專區網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
-台灣ETF專區網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}
-```
-"""
-        if has_search:
-            if retrieval := get_retrieval_from_google_search():
-                system_prompt += f"""
-- 網路搜尋的資料
-```
-{retrieval}
-```
-"""
-    else:
-        if has_hc:
-            lang_route = dict(zip(site_languages, lang_routes))[site_language]
-            if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f"""
-- MM幫助中心的資料
-```
-{retrieval}
-網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}
-不要提供來信或來電的客服聯繫方式
-```
-"""
-            else:
-                system_prompt += f"""
-- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
-"""
-        else:
-            system_prompt += f"""
-- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
-"""
-        system_prompt += f"""
-- 若非網站客服相關問題，你會婉拒回答
-"""
-    st.badge('此次問答採用的系統提示詞', icon="📝", color="blue")
-    system_prompt += dict(zip(site_languages, language_prompts))[site_language]
-    system_prompt
+    # Pass client and selected model_name to these functions from chat_logic
+    try:
+        # user_prompt is the text from st.chat_input
+        site_language_idx = get_user_prompt_lang(user_prompt, client, model_name_selected)
+        site_language = site_languages[site_language_idx]
+        
+        # For get_user_prompt_type, pass the relevant part of session history
+        history_for_type_check = st.session_state.contents[-2:] if len(st.session_state.contents) >= 2 else st.session_state.contents
+        user_prompt_type_pro = get_user_prompt_type(history_for_type_check, client, model_name_selected)
+        
+    except Exception as e:
+        st.code(f"Error analyzing user prompt: {e}")
+        st.stop()
+        
+    base_system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
+    
+    # Call construct_system_prompt from chat_logic.py
+    system_prompt, display_messages = construct_system_prompt(
+        base_system_prompt=base_system_prompt,
+        user_prompt_text=user_prompt, # The user's text input
+        user_prompt_type_pro=user_prompt_type_pro,
+        is_paid_user=is_paid_user,
+        subdomain=subdomain,
+        site_language=site_language, # String like "繁體中文"
+        site_languages=site_languages, # List of language names
+        language_prompts=language_prompts, # List of language-specific prompt additions
+        lang_routes=lang_routes, # List of language route codes like 'zh-tw'
+        knowledge_base=st.session_state.knowledge,
+        client=client,
+        model_name=model_name_selected,
+        has_chart=has_chart,
+        has_quickie=has_quickie,
+        has_blog=has_blog,
+        has_edm=has_edm,
+        has_podcast=has_podcast,
+        has_stock_etf=has_stock_etf,
+        has_hc=has_hc,
+        has_search=has_search,
+        html_content_loader_func=load_html_file_content
+    )
+
+    # Display messages returned by construct_system_prompt (errors, badge info)
+    for msg in display_messages:
+        if msg['type'] == 'code':
+            st.code(msg['content'])
+        elif msg['type'] == 'badge':
+            st.badge(msg['text'], icon=msg.get('icon'), color=msg.get('color', "blue"))
+            # If badge content also needs st.code for IDs, that needs to be handled
+            # For now, assuming badge text is self-contained or construct_system_prompt formats it fully.
+            # The current construct_system_prompt returns badge text like "Relevant Chart IDs for key: [ids]"
+            # This might be too long for st.badge's main text.
+            # A better approach might be for construct_system_prompt to return structured data for badges,
+            # e.g. {'type': 'badge', 'title': 'Chart IDs', 'key': csv_key, 'ids': ids_for_display}
+            # For now, let's keep it simple and assume the text is suitable or st.code is used for long parts.
+            # The current implementation in construct_system_prompt appends "Relevant ... IDs for {csv_key}: {ids_for_display}"
+            # to display_messages. This will be displayed by st.badge.
+
+    st.badge('此次問答採用的系統提示詞', icon="📝", color="blue") # This shows the user the final system prompt
+    st.text_area("System Prompt", system_prompt, height=200) # Using st.text_area for better display of long prompts
     '---'
     response_type = 'text/plain'
     response_schema = None
-    tools = None
+    tools = None # Tools for final content generation, not for retrieval.
     try:
-        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
-        response_text = remove_invalid_urls(response_text)
+        # Call generate_content from chat_logic for the final response
+        # user_prompt is the original user input text
+        final_response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, client, model_name_selected)
+        response_text = final_response.text
+        # Call remove_invalid_urls from chat_logic
+        response_text = remove_invalid_urls(response_text) # remove_invalid_urls is from chat_logic
     except Exception as e:
-        st.code(f"Errrr: {e}")
-        st.stop()
-    finally:
-        with st.chat_message("assistant", avatar='👩🏻‍💼'):
-            st.markdown(response_text)
-        st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+        st.code(f"Error generating final response: {e}")
+        st.stop() # Stop execution if final response generation fails
+    # The finally block should ideally be outside the try if it must run regardless of st.stop()
+    # However, st.stop() halts script execution, so finally might not run as expected if st.stop() is called.
+    # For robust logging, consider moving GIST update before potential st.stop() or use a different mechanism.
 
-        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
+    # This part will only be reached if no st.stop() was called in the try block.
+    with st.chat_message("assistant", avatar='👩🏻‍💼'):
+        st.markdown(response_text)
+    st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
+
+    # Use cost function from chat_logic, passing the selected model_name
+        # prompt_token_count and candidates_token_count are now imported at the top.
+        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost(model_name_selected)} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
         GITHUB_GIST_API = st.secrets['GITHUB_GIST_API']
         headers = {
