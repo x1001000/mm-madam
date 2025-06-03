@@ -322,7 +322,7 @@ https://{subdomain}.macromicro.me/subscribe
     tools = None
     try:
         response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
-        response_text = remove_invalid_urls(response_text)
+        # response_text = remove_invalid_urls(response_text)    doesn't work due to cloudflare js challenge
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
