@@ -8,26 +8,28 @@ import requests
 import re
 
 # to update
-after = '2025-04-01'
+after = '2025-05-01'
 price = {
     'gemini-2.0-flash': {'input': 0.1, 'output': 0.4},
-    'gemini-2.5-flash-preview-04-17': {'input': 0.15, 'output': 0.6},
+    'gemini-2.5-flash-preview-05-20': {'input': 0.15, 'output': 0.6, 'thinking': 3.5},
 }
 
 prompt_token_count = 0
 candidates_token_count = 0
 cached_content_token_count = 0
+thoughts_token_count = 0
 tool_use_prompt_token_count = 0
 total_token_count = 0
 def accumulate_token_count(usage_metadata):
-    global prompt_token_count, candidates_token_count, cached_content_token_count, tool_use_prompt_token_count, total_token_count
+    global prompt_token_count, candidates_token_count, cached_content_token_count, thoughts_token_count, tool_use_prompt_token_count, total_token_count
     prompt_token_count += usage_metadata.prompt_token_count
     candidates_token_count += usage_metadata.candidates_token_count
     cached_content_token_count += usage_metadata.cached_content_token_count if usage_metadata.cached_content_token_count else 0
+    thoughts_token_count += usage_metadata.thoughts_token_count if usage_metadata.thoughts_token_count else 0
     tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count if usage_metadata.tool_use_prompt_token_count else 0
     total_token_count += usage_metadata.total_token_count
 def cost():
-    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'])/1e6, 3)
+    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'] + thoughts_token_count * price[model]['thinking'])/1e6, 3)
 
 def generate_content(user_prompt, system_prompt, response_type, response_schema, tools):
     response = client.models.generate_content(
@@ -331,7 +333,7 @@ https://{subdomain}.macromicro.me/subscribe
             st.markdown(response_text)
         st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
 
-        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
+        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens + {thoughts_token_count} thinking tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
         GITHUB_GIST_API = st.secrets['GITHUB_GIST_API']
         headers = {
