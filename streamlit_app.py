@@ -90,19 +90,22 @@ def get_relevant_ids(csv_df_json):
         st.code(f"Errrr: {e}")
         st.stop()
 
+def get_retrieval_from_charts_data_api(csv_file):
+    if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
+        data = []
+        for _id in ids:
+            r = requests.get(f'{st.secrets['CHARTS_DATA_API']}{_id}')
+            d = r.json()
+            series = d['data'][f'c:{_id}']['series']
+            for i in range(len(series)):
+                series[i] = series[i][-2:]
+            data.append(d['data'][f'c:{_id}'])
+        return json.dumps(d['data'][f'c:{_id}'], ensure_ascii=False)
+
 def get_retrieval(csv_file):
     if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
-        if user_prompt_type_pro:
-            df = st.session_state.knowledge[csv_file]
-            df = df[df['id'].isin(ids)]
-        else:
-            df = pd.DataFrame(columns=['id', 'html'])
-            df['id'] = ids
-            htmls = []
-            for _id in ids:
-                with open(csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
-                    htmls.append(''.join(f.readlines()))
-            df['html'] = htmls
+        df = st.session_state.knowledge[csv_file]
+        df = df[df['id'].isin(ids)]
         return df.to_json(orient='records', force_ascii=False)
 
 # 8th API call
@@ -117,6 +120,17 @@ def get_retrieval_from_google_search():
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
+
+def get_retrieval_from_help_center(csv_file):
+    if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
+        df = pd.DataFrame(columns=['id', 'html'])
+        df['id'] = ids
+        htmls = []
+        for _id in ids:
+            with open(csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
+                htmls.append(''.join(f.readlines()))
+        df['html'] = htmls
+        return df.to_json(orient='records', force_ascii=False)
 
 def remove_invalid_urls(response_text):
     urls = re.findall(r'http[^\s)]*', response_text)
@@ -224,9 +238,9 @@ https://{subdomain}.macromicro.me/subscribe
 ```
 """
         if has_chart:
-            if retrieval := get_retrieval(glob.glob('knowledge/chart-*.csv')[0]):
+            if retrieval := get_retrieval_from_charts_data_api(glob.glob('knowledge/chart-*.csv')[0]):
                 system_prompt += f"""
-- MM圖表的資料，當中時間序列最新兩筆數據（series_last_rows）很重要，務必引用
+- MM圖表的資料，當中時間序列（series）包含前值及最新數據，務必引用
 ```
 {retrieval}
 網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}
@@ -295,7 +309,7 @@ https://{subdomain}.macromicro.me/subscribe
     else:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
-            if retrieval := get_retrieval(f'knowledge/hc/{lang_route}/_log.csv'):
+            if retrieval := get_retrieval_from_help_center(f'knowledge/hc/{lang_route}/_log.csv'):
                 system_prompt += f"""
 - MM幫助中心的資料
 ```
