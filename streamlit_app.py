@@ -181,7 +181,7 @@ with st.sidebar:
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
     '---'
     model = st.selectbox('Model', price.keys())
-subdomain = dict(zip(site_languages, subdomains))[site_language]
+
 if has_memory:
     # include and display the last 5 turns of conversation before the current turn
     st.session_state.contents = st.session_state.contents[-10:]
@@ -221,101 +221,57 @@ if user_prompt:
     st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
     site_language = site_languages[get_user_prompt_lang()]
+    subdomain = dict(zip(site_languages, subdomains))[site_language]
     system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
     user_prompt_type_pro = get_user_prompt_type()
     if user_prompt_type_pro:
         if not is_paid_user:
-            system_prompt += f"""
-- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結
-```
-https://{subdomain}.macromicro.me/subscribe
-```
-"""
+            system_prompt += '- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結  \n'
+            system_prompt += f'`https://{subdomain}.macromicro.me/subscribe`  \n'
         if has_chart:
             if retrieval := get_retrieval_from_charts_data_api(glob.glob('knowledge/chart-*.csv')[0]):
-                system_prompt += f"""
-- MM圖表的資料，當中時間序列（series）包含前值及最新數據，務必引用
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}
-```
-"""
-        if has_quickie and site_language in site_languages[:2]:
+                system_prompt += '- MM圖表的資料，當中時間序列（series）包含前值及最新數據，務必引用  \n'
+                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}`  \n'
+                system_prompt += f'```\n{retrieval}\n```\n'
+        if has_quickie:
             if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
-                system_prompt += f"""
-- MM短評的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/quickie?id={{id}}
-```
-"""
-        if has_blog and site_language in site_languages[:2]:
+                system_prompt += '- MM短評的資料  \n'
+                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/quickie?id={{id}}`  \n' if subdomain != 'en' else ''
+                system_prompt += f'```\n{retrieval}\n```\n'
+        if has_blog:
             if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
-                system_prompt += f"""
-- MM部落格的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
-```
-"""
-        if has_blog and site_language == 'English':
+                system_prompt += '- MM部落格的資料  \n'
+                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain != 'en' else ''
+                system_prompt += f'```\n{retrieval}\n```\n'
             if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
-                system_prompt += f"""
-- MM部落格的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/blog/{{slug}}
-```
-"""
-        if has_edm and site_language in site_languages[:2]:
+                system_prompt += '- MM英文部落格的資料  \n'
+                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain == 'en' else ''
+                system_prompt += f'```\n{retrieval}\n```\n'
+        if has_edm:
             if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
-                system_prompt += f"""
-- MM獨家報告的資料
-```
-{retrieval}
-網址規則 https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}
-```
-"""
+                system_prompt += '- MM獨家報告的資料  \n'
+                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}`  \n' if subdomain != 'en' else ''
+                system_prompt += f'```\n{retrieval}\n```\n'
         if has_stock_etf:
-            system_prompt += f"""
-- MM美股財報、ETF專區
-```
-美股財報資料網址規則 https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}
-美國ETF專區網址規則 https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}
-台灣ETF專區網址規則 https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}
-```
-"""
+            system_prompt += '- MM美股財報資料庫、ETF專區的網址規則  \n'
+            system_prompt += f'美股財報資料庫 `https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}`  \n'
+            system_prompt += f'美國ETF專區 `https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}`  \n'
+            system_prompt += f'台灣ETF專區 `https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}`  \n'
         if has_search:
             if retrieval := get_retrieval_from_google_search():
-                system_prompt += f"""
-- 網路搜尋的資料
-```
-{retrieval}
-```
-"""
+                system_prompt += '- 網路搜尋的資料  \n'
+                system_prompt += f'```\n{retrieval}\n```\n'
     else:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
             if retrieval := get_retrieval_from_help_center(f'knowledge/hc/{lang_route}/_log.csv'):
-                system_prompt += f"""
-- MM幫助中心的資料
-```
-{retrieval}
-網址規則 https://support.macromicro.me/hc/{lang_route}/articles/{{id}}
-不要提供來信或來電的客服聯繫方式
-```
-"""
-            else:
-                system_prompt += f"""
-- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
-"""
-        else:
-            system_prompt += f"""
-- 提供用戶MM幫助中心網址 https://support.macromicro.me/hc/{lang_route}
-"""
-        system_prompt += f"""
-- 若非網站客服相關問題，你會婉拒回答
-"""
+                system_prompt += '- MM幫助中心的資料  \n'
+                system_prompt += '不要提供來信或來電的客服聯繫方式  \n'
+                system_prompt += f'網址規則 `https://support.macromicro.me/hc/{lang_route}/articles/{{id}}`  \n'
+                system_prompt += f'```\n{retrieval}\n```\n'
+        system_prompt += f'- MM幫助中心網址 `https://support.macromicro.me/hc/{lang_route}`  \n'
+        system_prompt += '- 若非網站客服相關問題，你會婉拒回答  \n'
+
     st.badge('此次問答採用的系統提示詞', icon="📝", color="blue")
     system_prompt += dict(zip(site_languages, language_prompts))[site_language]
     system_prompt
