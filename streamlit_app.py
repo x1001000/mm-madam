@@ -77,13 +77,12 @@ def get_user_prompt_type():
 # 3rd ~ 7th API calls
 def get_relevant_ids(csv_df_json):
     system_prompt = 'Given a user query, identify up to 5 of the most relevant IDs in the JSON below.\n'
-    system_prompt += st.session_state.knowledge[csv_df_json]
+    system_prompt += knowledge[csv_df_json]
     response_type = 'application/json'
     response_schema = list[int]
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-        st.badge('檢索csv資料中相關id，再用id查詢語料', icon="🔍", color="blue")
         st.code(csv_df_json.replace('df.iloc[:,:2].to_json', str(response_parsed)))
         return response_parsed
     except Exception as e:
@@ -94,7 +93,7 @@ def get_retrieval_from_charts_data_api(csv_file):
     if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
         data = []
         for _id in ids:
-            r = requests.get(f'{st.secrets['CHARTS_DATA_API']}{_id}')
+            r = requests.get(f'{st.secrets['CHARTS_DATA_API']}/{_id}')
             d = r.json()
             series = d['data'][f'c:{_id}']['series']
             for i in range(len(series)):
@@ -104,7 +103,7 @@ def get_retrieval_from_charts_data_api(csv_file):
 
 def get_retrieval(csv_file):
     if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
-        df = st.session_state.knowledge[csv_file]
+        df = knowledge[csv_file]
         df = df[df['id'].isin(ids)]
         return df.to_json(orient='records', force_ascii=False)
 
@@ -127,7 +126,7 @@ def get_retrieval_from_help_center(csv_file):
         df['id'] = ids
         htmls = []
         for _id in ids:
-            with open(csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
+            with open('knowledge/' + csv_file.replace('_log', str(_id)).replace('csv', 'html')) as f:
                 htmls.append(''.join(f.readlines()))
         df['html'] = htmls
         return df.to_json(orient='records', force_ascii=False)
@@ -205,15 +204,27 @@ else:
     # When st.chat_input is used in the main body of an app, it will be pinned to the bottom of the page.
     user_prompt = st.chat_input('Ask Madam')
 
-if 'knowledge' not in st.session_state:
-    st.session_state.knowledge = {}
-    for csv_file in glob.glob('knowledge/*.csv') + glob.glob('knowledge/*/*/*.csv'):
+@st.cache_data
+def get_knowledge():
+    knowledge = {}
+    knowledge_csv_api = st.secrets['KNOWLEDGE_CSV_API']
+    csv_files = [
+        'knowledge/chart.csv',
+        f'{knowledge_csv_api}/quickie.csv',
+        f'{knowledge_csv_api}/post.csv',
+        f'{knowledge_csv_api}/post_en.csv',
+        f'{knowledge_csv_api}/edm.csv',
+        ] + glob.glob('knowledge/hc/*/_log.csv')
+    for csv_file in csv_files:
         df = pd.read_csv(csv_file)
         # quickie, blog, edm
         if 'date' in df.columns:
             df = df[df['date'] > after]
-        st.session_state.knowledge[csv_file] = df
-        st.session_state.knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
+        csv_file = csv_file.split('knowledge/')[-1].split('csv/')[-1]
+        knowledge[csv_file] = df
+        knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
+    return knowledge
+knowledge = get_knowledge()
 
 if user_prompt:
     with st.chat_message("user"):
@@ -225,30 +236,32 @@ if user_prompt:
     system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
     user_prompt_type_pro = get_user_prompt_type()
     if user_prompt_type_pro:
-        if not is_paid_user:
+        if is_paid_user:
+            st.badge('用 Gemini 檢索 csv 的 id 及名稱欄位與提問相關的 id，再用 id 索引完整 csv，寫入 system prompt', icon="🔍", color="blue")
+        else:
             system_prompt += '- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結  \n'
             system_prompt += f'`https://{subdomain}.macromicro.me/subscribe`  \n'
         if has_chart:
-            if retrieval := get_retrieval_from_charts_data_api(glob.glob('knowledge/chart-*.csv')[0]):
+            if retrieval := get_retrieval_from_charts_data_api('chart.csv'):
                 system_prompt += '- MM圖表的資料，當中時間序列（series）包含前值及最新數據，務必引用  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/charts/{{id}}/{{slug}}`  \n'
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_quickie:
-            if retrieval := get_retrieval(glob.glob('knowledge/quickie-*.csv')[0]):
+            if retrieval := get_retrieval('quickie.csv'):
                 system_prompt += '- MM短評的資料  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/quickie?id={{id}}`  \n' if subdomain != 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_blog:
-            if retrieval := get_retrieval(glob.glob('knowledge/blog-*.csv')[0]):
+            if retrieval := get_retrieval('post.csv'):
                 system_prompt += '- MM部落格的資料  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain != 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
-            if retrieval := get_retrieval(glob.glob('knowledge/blog_en-*.csv')[0]):
+            if retrieval := get_retrieval('post_en.csv'):
                 system_prompt += '- MM英文部落格的資料  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain == 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_edm:
-            if retrieval := get_retrieval(glob.glob('knowledge/edm-*.csv')[0]):
+            if retrieval := get_retrieval('edm.csv'):
                 system_prompt += '- MM獨家報告的資料  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}`  \n' if subdomain != 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
@@ -264,7 +277,7 @@ if user_prompt:
     else:
         if has_hc:
             lang_route = dict(zip(site_languages, lang_routes))[site_language]
-            if retrieval := get_retrieval_from_help_center(f'knowledge/hc/{lang_route}/_log.csv'):
+            if retrieval := get_retrieval_from_help_center(f'hc/{lang_route}/_log.csv'):
                 system_prompt += '- MM幫助中心的資料  \n'
                 system_prompt += '不要提供來信或來電的客服聯繫方式  \n'
                 system_prompt += f'網址規則 `https://support.macromicro.me/hc/{lang_route}/articles/{{id}}`  \n'
