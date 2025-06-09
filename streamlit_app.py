@@ -181,6 +181,7 @@ with st.sidebar:
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
     '---'
     model = st.selectbox('Model', price.keys())
+    st.link_button('Gemini API Pricing', 'https://ai.google.dev/gemini-api/docs/pricing', icon='💰')
 
 if has_memory:
     # include and display the last 5 turns of conversation before the current turn
