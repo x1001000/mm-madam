@@ -124,7 +124,7 @@ def get_retrieval_from_google_search():
 def google_search_site(query):
     results = []
     from googlesearch import search
-    for result in search("關稅 site:macromicro.me", advanced=True):
+    for result in search(f"{query} site:macromicro.me", advanced=True):
         results.append(f'[{result.title}]({result.url})')
     return '\n\n'.join(results)
 function_declarations = [
