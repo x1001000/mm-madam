@@ -63,14 +63,14 @@ def get_user_prompt_lang():
 # 2nd API call
 def get_user_prompt_type():
     user_prompt = st.session_state.contents[-2:]
-    system_prompt = '問答內容最接近哪一類（二選一）：財經時事類、網站客服及其他類'
+    system_prompt = '問答內容最接近哪一類（二選一）：財經時事類、站內搜尋或網站客服或其他類'
     response_type = 'application/json'
     response_schema = str # int does not work
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
         # response_parsed
-        return {'財經時事類': True, '網站客服及其他類': False}[response_parsed]
+        return {'財經時事類': True, '站內搜尋或網站客服或其他類': False}[response_parsed]
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -120,6 +120,29 @@ def get_retrieval_from_google_search():
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
+
+def google_search_site(query):
+    results = []
+    from googlesearch import search
+    for result in search("關稅 site:macromicro.me", advanced=True):
+        results.append(f'[{result.title}]({result.url})')
+    return '\n\n'.join(results)
+function_declarations = [
+    types.FunctionDeclaration(
+        name='google_search_site',
+        description='Search Google for a query on macromicro.me site',
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query to use when searching macromicro.me site",
+                },
+            },
+            "required": ["query"],
+        },
+    ),
+]
 
 def get_retrieval_from_help_center(csv_file):
     if ids := get_relevant_ids(csv_file + ' => df.iloc[:,:2].to_json'):
@@ -293,9 +316,15 @@ if user_prompt:
     '---'
     response_type = 'text/plain'
     response_schema = None
-    tools = None
+    tools = [types.Tool(function_declarations=function_declarations)]
     try:
-        response_text = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).text
+        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools)
+        tool_call = response.candidates[0].content.parts[0].function_call
+        if tool_call:
+            if tool_call.name == 'google_search_site':
+                response_text = google_search_site(**tool_call.args)
+        else:
+            response_text = response.text
         # response_text = remove_invalid_urls(response_text)    doesn't work due to cloudflare js challenge
     except Exception as e:
         st.code(f"Errrr: {e}")
