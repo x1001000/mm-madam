@@ -10,7 +10,7 @@ import re
 # to update
 after = '2025-05-01'
 price = {
-    'gemini-2.0-flash': {'input': 0.1, 'output': 0.4, 'thinking': 0},
+    # 'gemini-2.0-flash': {'input': 0.1, 'output': 0.4, 'thinking': 0},
     'gemini-2.5-flash-preview-05-20': {'input': 0.15, 'output': 0.6, 'thinking': 3.5},
     'gemini-2.5-pro-preview-06-05': {'input': 1.25, 'output': 10, 'thinking': 0},
 }
