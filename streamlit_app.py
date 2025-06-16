@@ -206,6 +206,9 @@ with st.sidebar:
     model = st.selectbox('Model', price.keys())
     st.link_button('Gemini API Pricing', 'https://ai.google.dev/gemini-api/docs/pricing', icon='💰')
 
+# initialize the conversation history
+if 'contents' not in st.session_state:
+    st.session_state.contents = []
 if has_memory:
     # include and display the last 5 turns of conversation before the current turn
     st.session_state.contents = st.session_state.contents[-10:]
@@ -213,7 +216,6 @@ if has_memory:
         with st.chat_message(content.role, avatar=None if content.role == "user" else '👩🏻‍💼'):
             st.markdown(content.parts[0].text)
 else:
-    # initialize the conversation history when has_memory defaults to False
     # clear the conversation history
     st.session_state.contents = []
 
@@ -262,7 +264,7 @@ if user_prompt:
     user_prompt_type_pro = get_user_prompt_type()
     if user_prompt_type_pro:
         if is_paid_user:
-            st.badge('用 Gemini 檢索 csv 的 id 及名稱欄位與提問相關的 id，再用 id 索引完整 csv，寫入 system prompt', icon="🔍", color="blue")
+            st.badge('此次問答檢索的MM文本', icon="🔍", color="blue")
         else:
             system_prompt += '- 你會鼓勵用戶升級成為付費用戶就能享有完整問答服務，並且提供訂閱方案連結  \n'
             system_prompt += f'`https://{subdomain}.macromicro.me/subscribe`  \n'
@@ -310,7 +312,7 @@ if user_prompt:
         system_prompt += f'- MM幫助中心網址 `https://support.macromicro.me/hc/{lang_route}`  \n'
         system_prompt += '- 若非網站客服相關問題，你會婉拒回答  \n'
 
-    st.badge('此次問答採用的系統提示詞', icon="📝", color="blue")
+    st.badge('此次問答輸入的系統提示詞', icon="📝", color="blue")
     system_prompt += dict(zip(site_languages, language_prompts))[site_language]
     system_prompt
     '---'
