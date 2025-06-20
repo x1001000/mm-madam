@@ -199,7 +199,6 @@ with st.sidebar:
     has_quickie = st.toggle(f'💡 MM短評', value=is_paid_user, disabled=not is_paid_user)
     has_blog = st.toggle(f'📝 MM部落格', value=is_paid_user, disabled=not is_paid_user)
     has_edm = st.toggle(f'📮 MM獨家報告', value=is_paid_user, disabled=not is_paid_user)
-    has_stock_etf = st.toggle('📈 MM美股財報、ETF專區', value=True)
     has_hc = st.toggle('❓ MM幫助中心', value=True)
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
@@ -296,11 +295,6 @@ if user_prompt:
                 system_prompt += '- MM獨家報告的資料  \n'
                 system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}`  \n' if subdomain != 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
-        if has_stock_etf:
-            system_prompt += '- MM美股財報資料庫、ETF專區的網址規則  \n'
-            system_prompt += f'美股財報資料庫 `https://{subdomain}.macromicro.me/stocks/info/{{ticker_symbol}}`  \n'
-            system_prompt += f'美國ETF專區 `https://{subdomain}.macromicro.me/etf/us/intro/{{ticker_symbol}}`  \n'
-            system_prompt += f'台灣ETF專區 `https://{subdomain}.macromicro.me/etf/tw/intro/{{ticker_symbol}}`  \n'
         if has_search:
             if retrieval := get_retrieval_from_google_search():
                 system_prompt += '- 網路搜尋的資料  \n'
