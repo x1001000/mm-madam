@@ -10,7 +10,7 @@ import re
 # to update
 after = '2025-05-01'
 price = {
-    # 'gemini-2.0-flash': {'input': 0.1, 'output': 0.4, 'thinking': 0},
+    'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0},
     'gemini-2.5-flash-preview-05-20': {'input': 0.15, 'output': 0.6, 'thinking': 3.5},
     'gemini-2.5-pro-preview-06-05': {'input': 1.25, 'output': 10, 'thinking': 0},
 }
@@ -32,7 +32,7 @@ def accumulate_token_count(usage_metadata):
 def cost():
     return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'] + thoughts_token_count * price[model]['thinking'])/1e6, 3)
 
-def generate_content(user_prompt, system_prompt, response_type, response_schema, tools):
+def generate_content(user_prompt, system_prompt, response_type, response_schema, tools, thinking_config=None):
     response = client.models.generate_content(
         model=model,
         contents=user_prompt,
@@ -41,6 +41,7 @@ def generate_content(user_prompt, system_prompt, response_type, response_schema,
             response_mime_type=response_type,
             response_schema=response_schema,
             tools=tools,
+            thinking_config=thinking_config,
         )
     )
     accumulate_token_count(response.usage_metadata)
@@ -293,7 +294,7 @@ if user_prompt:
         if has_edm:
             if retrieval := get_retrieval('edm.csv'):
                 system_prompt += '- MM獨家報告的資料  \n'
-                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}`  \n' if subdomain != 'en' else ''
+                # system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/mails/edm/{'tc' if site_language[0] == '繁' else 'sc'}/display/{{id}}`  \n' if subdomain != 'en' else ''
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_search:
             if retrieval := get_retrieval_from_google_search():
@@ -315,9 +316,10 @@ if user_prompt:
     '---'
     response_type = 'text/plain'
     response_schema = None
-    tools = [types.Tool(function_declarations=function_declarations)]
+    # tools = [types.Tool(function_declarations=function_declarations)]
+    tools = None
     try:
-        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools)
+        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, thinking_config = types.ThinkingConfig(thinking_budget=8192))
         tool_call = response.candidates[0].content.parts[0].function_call
         if tool_call:
             if tool_call.name == 'google_search_site':
