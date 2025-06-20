@@ -47,15 +47,20 @@ def generate_content(user_prompt, system_prompt, response_type, response_schema,
     return response
 
 # 1st API call
-def get_user_prompt_lang():
-    system_prompt = 'Given a user query, identify its language as one of the three: zh-tw, zh-cn, other'
+def get_site_language_idx():
+    system_prompt = 'Given a user query, identify its language code'
     response_type = 'application/json'
     response_schema = str # int does not work
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
-        # response_parsed
-        return {'zh-tw': 0, 'zh-cn': 1, 'other': 2}[response_parsed.lower()]
+        lang_idx_map = {
+            'zh': 0,
+            'zh-tw': 0, 'tw': 0,
+            'zh-cn': 1, 'cn': 1,
+            }
+        site_language_idx = lang_idx_map.get(response_parsed.lower(), 2)
+        return site_language_idx # site_language = 'English' for other languages
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -170,10 +175,6 @@ site_languages = [
     '繁體中文',
     '简体中文',
     'English']
-language_prompts = [
-    '- 使用繁體中文',
-    '- 使用简体中文',
-    '- Use English.']
 subheader_texts = [
     "財經時事或網站客服問題，試試：請介紹MM Max方案",
     "财经时事或网站客服问题，试试：请介绍MM Max方案",
@@ -258,9 +259,12 @@ if user_prompt:
         st.markdown(user_prompt)
     st.session_state.contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_prompt)]))
 
-    site_language = site_languages[get_user_prompt_lang()]
+    site_language = site_languages[get_site_language_idx()]
     subdomain = dict(zip(site_languages, subdomains))[site_language]
-    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
+    system_prompt = ''
+    system_prompt += f'- language = "{site_language}"\n'
+    system_prompt += f'- subdomain = "{subdomain}"\n'
+    system_prompt += requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
     user_prompt_type_pro = get_user_prompt_type()
     if user_prompt_type_pro:
         if is_paid_user:
@@ -313,7 +317,6 @@ if user_prompt:
         system_prompt += '- 若非網站客服相關問題，你會婉拒回答  \n'
 
     st.badge('此次問答輸入的系統提示詞', icon="📝", color="blue")
-    system_prompt += dict(zip(site_languages, language_prompts))[site_language]
     system_prompt
     '---'
     response_type = 'text/plain'
