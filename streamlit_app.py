@@ -73,14 +73,14 @@ def get_site_language_idx():
 # 2nd API call
 def get_user_prompt_type():
     user_prompt = st.session_state.contents[-2:]
-    system_prompt = '問答內容最接近哪一類（二選一）：財經時事類、站內搜尋或網站客服或其他類'
+    system_prompt = '用戶輸入分類（二選一）：總經財經時事類、網站客服或其他類'
     response_type = 'application/json'
     response_schema = str # int does not work
     tools = None
     try:
         response_parsed = generate_content(user_prompt, system_prompt, response_type, response_schema, tools).parsed
         # response_parsed
-        return {'財經時事類': True, '站內搜尋或網站客服或其他類': False}[response_parsed]
+        return True if response_parsed == '總經財經時事類' else False
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
@@ -281,16 +281,16 @@ if user_prompt:
         if has_quickie:
             if retrieval := get_retrieval('quickie.csv'):
                 system_prompt += '- MM短評的資料  \n'
-                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/quickie?id={{id}}`  \n' if subdomain != 'en' else ''
+                system_prompt += f'網址規則 `https://{'www' if subdomain == 'en' else subdomain}.macromicro.me/quickie?id={{id}}`  \n'
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_blog:
             if retrieval := get_retrieval('post.csv'):
                 system_prompt += '- MM部落格的資料  \n'
-                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain != 'en' else ''
+                system_prompt += f'網址規則 `https://{'www' if subdomain == 'en' else subdomain}.macromicro.me/blog/{{slug}}`  \n'
                 system_prompt += f'```\n{retrieval}\n```\n'
             if retrieval := get_retrieval('post_en.csv'):
                 system_prompt += '- MM英文部落格的資料  \n'
-                system_prompt += f'網址規則 `https://{subdomain}.macromicro.me/blog/{{slug}}`  \n' if subdomain == 'en' else ''
+                system_prompt += f'網址規則 `https://en.macromicro.me/blog/{{slug}}`  \n'
                 system_prompt += f'```\n{retrieval}\n```\n'
         if has_edm:
             if retrieval := get_retrieval('edm.csv'):
@@ -313,7 +313,8 @@ if user_prompt:
         system_prompt += '- 若非網站客服相關問題，你會婉拒回答  \n'
 
     system_prompt += f'- `subdomain = "{subdomain}"`\n'
-    system_prompt += f'- You will respond in {site_language}, regardless of the language used in this system prompt and the knowledge context.'
+    system_prompt += f'- You MUST NOT reference to any edm{', quickie and blog' if subdomain == 'en' else ''}.\n'
+    system_prompt += f'- You MUST respond in {site_language}, regardless of the language used in this system prompt.\n'
     st.badge('此次問答輸入的系統提示詞', icon="📝", color="blue")
     system_prompt
     '---'
@@ -330,12 +331,13 @@ if user_prompt:
         else:
             response_text = response.text
         # response_text = remove_invalid_urls(response_text)    doesn't work due to cloudflare js challenge
+        if subdomain == 'en':   # hard fix hallucination
+            response_text = re.sub(r'https://(www|sc)\.macromicro', f'https://en.macromicro', response_text)
     except Exception as e:
         st.code(f"Errrr: {e}")
         st.stop()
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
-            response_text = re.sub(r'https://(www|sc|en)\.macromicro', f'https://{subdomain}.macromicro', response_text)
             st.markdown(response_text)
         st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
 
