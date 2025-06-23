@@ -7,12 +7,12 @@ import glob
 import requests
 import re
 
-# to update
-after = '2025-05-01'
-price = {
-    'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0},
-    'gemini-2.5-flash-preview-05-20': {'input': 0.15, 'output': 0.6, 'thinking': 3.5},
-    'gemini-2.5-pro-preview-06-05': {'input': 1.25, 'output': 10, 'thinking': 0},
+# MANUALLY MONTHLY UPDATE
+AFTER_DATE = '2025-06-01'
+PRICE = {
+    # 'gemini-2.5-flash-lite-preview-06-17': {'input': 0.1, 'output': 0.4, 'thinking': 0.4, 'caching': 0.025}, TOO SMALL
+    'gemini-2.5-flash': {'input': 0.3, 'output': 2.5, 'thinking': 2.5, 'caching': 0.075},
+    'gemini-2.5-pro-preview-06-05': {'input': 1.25, 'output': 10, 'thinking': 10, 'caching': 0.31},
 }
 
 prompt_token_count = 0
@@ -25,12 +25,16 @@ def accumulate_token_count(usage_metadata):
     global prompt_token_count, candidates_token_count, cached_content_token_count, thoughts_token_count, tool_use_prompt_token_count, total_token_count
     prompt_token_count += usage_metadata.prompt_token_count
     candidates_token_count += usage_metadata.candidates_token_count
-    cached_content_token_count += usage_metadata.cached_content_token_count if usage_metadata.cached_content_token_count else 0
-    thoughts_token_count += usage_metadata.thoughts_token_count if usage_metadata.thoughts_token_count else 0
-    tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count if usage_metadata.tool_use_prompt_token_count else 0
+    cached_content_token_count += usage_metadata.cached_content_token_count or 0
+    thoughts_token_count += usage_metadata.thoughts_token_count or 0
+    tool_use_prompt_token_count += usage_metadata.tool_use_prompt_token_count or 0
     total_token_count += usage_metadata.total_token_count
 def cost():
-    return round((prompt_token_count * price[model]['input'] + candidates_token_count * price[model]['output'] + thoughts_token_count * price[model]['thinking'])/1e6, 3)
+    return round((
+        prompt_token_count * PRICE[model]['input'] + 
+        candidates_token_count * PRICE[model]['output'] + 
+        cached_content_token_count * PRICE[model]['caching'] + 
+        thoughts_token_count * PRICE[model]['thinking']) / 1e6, 3)
 
 def generate_content(user_prompt, system_prompt, response_type, response_schema, tools, thinking_config=None):
     response = client.models.generate_content(
@@ -204,7 +208,7 @@ with st.sidebar:
     has_search = st.toggle('🔍 Google搜尋', value=True)
     has_memory = st.toggle('🧠 記得前五次問答', value=False)
     '---'
-    model = st.selectbox('Model', price.keys())
+    model = st.selectbox('Model', PRICE.keys())
     st.link_button('Gemini API Pricing', 'https://ai.google.dev/gemini-api/docs/pricing', icon='💰')
 
 # initialize the conversation history
@@ -247,7 +251,7 @@ def get_knowledge():
         df = pd.read_csv(csv_file)
         # quickie, blog, edm
         if 'date' in df.columns:
-            df = df[df['date'] > after]
+            df = df[df['date'] > AFTER_DATE]
         csv_file = csv_file.split('knowledge/')[-1].split('csv/')[-1]
         knowledge[csv_file] = df
         knowledge[csv_file + ' => df.iloc[:,:2].to_json'] = df.iloc[:,:2].to_json(orient='records', force_ascii=False)
@@ -261,10 +265,7 @@ if user_prompt:
 
     site_language = site_languages[get_site_language_idx()]
     subdomain = dict(zip(site_languages, subdomains))[site_language]
-    system_prompt = ''
-    system_prompt += f'- language = "{site_language}"\n'
-    system_prompt += f'- subdomain = "{subdomain}"\n'
-    system_prompt += requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
+    system_prompt = requests.get(st.secrets['SYSTEM_PROMPT_URL']).text
     user_prompt_type_pro = get_user_prompt_type()
     if user_prompt_type_pro:
         if is_paid_user:
@@ -311,6 +312,8 @@ if user_prompt:
         system_prompt += f'- MM幫助中心網址 `https://support.macromicro.me/hc/{lang_route}`  \n'
         system_prompt += '- 若非網站客服相關問題，你會婉拒回答  \n'
 
+    system_prompt += f'- `subdomain = "{subdomain}"`\n'
+    system_prompt += f'- You will respond in {site_language}, regardless of the language used in this system prompt and the knowledge context.'
     st.badge('此次問答輸入的系統提示詞', icon="📝", color="blue")
     system_prompt
     '---'
@@ -319,7 +322,7 @@ if user_prompt:
     # tools = [types.Tool(function_declarations=function_declarations)]
     tools = None
     try:
-        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, thinking_config = types.ThinkingConfig(thinking_budget=8192))
+        response = generate_content(user_prompt, system_prompt, response_type, response_schema, tools, thinking_config=types.ThinkingConfig(thinking_budget=2000))
         tool_call = response.candidates[0].content.parts[0].function_call
         if tool_call:
             if tool_call.name == 'google_search_site':
@@ -332,10 +335,11 @@ if user_prompt:
         st.stop()
     finally:
         with st.chat_message("assistant", avatar='👩🏻‍💼'):
+            response_text = re.sub(r'https://(www|sc|en)\.macromicro', f'https://{subdomain}.macromicro', response_text)
             st.markdown(response_text)
         st.session_state.contents.append(types.Content(role="model", parts=[types.Part.from_text(text=response_text)]))
 
-        st.badge(f'{prompt_token_count} input tokens + {candidates_token_count} output tokens + {thoughts_token_count} thinking tokens ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
+        st.badge(f'{prompt_token_count} input + {candidates_token_count} output + {thoughts_token_count} thinking + {cached_content_token_count} caching ≒ {cost()} USD ( when Google Search < 1500 Requests/Day )', icon="💰", color="green")
 
         GITHUB_GIST_API = st.secrets['GITHUB_GIST_API']
         headers = {
